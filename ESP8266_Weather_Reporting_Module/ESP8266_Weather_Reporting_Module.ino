@@ -17,8 +17,6 @@
 int okLedState = HIGH;
 
 // WiFi Variables
-// const char* ssid = "MyCharterWiFi03-2G";
-// const char* password = "royalbreeze440";
 #include "./login.h"
 
 // Sensor Variables
@@ -26,9 +24,7 @@ int okLedState = HIGH;
 #define DHTTYPE DHT22
 DHT dhtSensor(DHTPIN, DHTTYPE);
 
-static bool usingBMPSensor;
 Adafruit_BMP085 bmpSensor;
-// ---------
 
 void setup() {
   Serial.begin(115200);
@@ -50,6 +46,7 @@ void setup() {
     digitalWrite(OK_LED_PIN, okLedState);
     Serial.print(".");
   }
+  
   okLedState = HIGH;
   digitalWrite(OK_LED_PIN, okLedState);
   digitalWrite(ERROR_LED_PIN, LOW);
@@ -60,10 +57,7 @@ void setup() {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  usingBMPSensor = bmpSensor.begin();
-  if (!usingBMPSensor) {
-    Serial.println("Could not find a valid BMP sensor");
-  }
+  bmpSensor.begin();
 
   // Need to wait 2 seconds for dhtSensor to initalize
   Serial.println("Reading...");
