@@ -10,15 +10,16 @@
 #include <DHT.h>
 
 // Misc Variables
-const int okLed = 14;
-const int errorLed = 12;
-const int requestLed = 15;
+#define OK_LED_PIN 14
+#define ERROR_LED_PIN 12
+#define REQUEST_LED_PIN 15
 
 int okLedState = HIGH;
 
 // WiFi Variables
-const char* ssid = "MyCharterWiFi03-2G";
-const char* password = "royalbreeze440";
+// const char* ssid = "MyCharterWiFi03-2G";
+// const char* password = "royalbreeze440";
+#include "./login.h"
 
 // Sensor Variables
 #define DHTPIN 13
@@ -32,13 +33,13 @@ Adafruit_BMP085 bmpSensor;
 void setup() {
   Serial.begin(115200);
 
-  pinMode(okLed, OUTPUT);
-  pinMode(errorLed, OUTPUT);
-  pinMode(requestLed, OUTPUT);
+  pinMode(OK_LED_PIN, OUTPUT);
+  pinMode(ERROR_LED_PIN, OUTPUT);
+  pinMode(REQUEST_LED_PIN, OUTPUT);
 
-  digitalWrite(okLed, HIGH);
-  digitalWrite(errorLed, HIGH);
-  digitalWrite(requestLed, LOW);
+  digitalWrite(OK_LED_PIN, HIGH);
+  digitalWrite(ERROR_LED_PIN, HIGH);
+  digitalWrite(REQUEST_LED_PIN, LOW);
 
   Serial.print("Connecting to WiFi");
   WiFi.begin(ssid, password);
@@ -46,12 +47,12 @@ void setup() {
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     okLedState = !okLedState;
-    digitalWrite(okLed, okLedState);
+    digitalWrite(OK_LED_PIN, okLedState);
     Serial.print(".");
   }
   okLedState = HIGH;
-  digitalWrite(okLed, okLedState);
-  digitalWrite(errorLed, LOW);
+  digitalWrite(OK_LED_PIN, okLedState);
+  digitalWrite(ERROR_LED_PIN, LOW);
 
   Serial.println("");
   Serial.print("Connected to ");
@@ -73,9 +74,9 @@ void setup() {
 void loop() {
   char outputUrl[800] = "";
   char buffer[15];
-  
+
   float seaLevelPressure = 1017.2*100;
-  
+
   float bmpTemp = bmpSensor.readTemperature();
   float bmpPressure = bmpSensor.readPressure();
   float bmpAltitude = bmpSensor.readAltitude(seaLevelPressure);
@@ -84,8 +85,8 @@ void loop() {
   float dhtHumidity = dhtSensor.readHumidity();
   float dhtHeatIndex = dhtSensor.computeHeatIndex(dhtTemp, dhtHumidity);
 
-  digitalWrite(requestLed, HIGH);
-  digitalWrite(errorLed, LOW);
+  digitalWrite(REQUEST_LED_PIN, HIGH);
+  digitalWrite(ERROR_LED_PIN, LOW);
 
   strcat(outputUrl, "/?");
   strcat(outputUrl, "temp=");
@@ -114,13 +115,13 @@ void loop() {
     }
   } else {
     Serial.println(httpCode);
-    digitalWrite(errorLed, HIGH);
+    digitalWrite(ERROR_LED_PIN, HIGH);
   }
 
   http.end();
 
-  digitalWrite(requestLed, LOW);
-  
+  digitalWrite(REQUEST_LED_PIN, LOW);
+
   delay(5000);
 
 }
