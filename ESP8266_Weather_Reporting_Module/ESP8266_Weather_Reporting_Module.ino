@@ -14,6 +14,8 @@
 #define ERROR_LED_PIN 12
 #define REQUEST_LED_PIN 15
 
+#define DEBUG_OUTPUT
+
 int okLedState = HIGH;
 
 // WiFi Variables
