@@ -307,8 +307,6 @@ if __name__ == "__main__":
 			# Add the date and time header
 			data += '<div class="block, center"><h1>%s</h1>%s</div>' % (time.strftime("%A, %B %d"), currentInfoHtml)
 
-
-
 			data += ''
 			print(current)
 
