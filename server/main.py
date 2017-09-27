@@ -11,6 +11,16 @@ resultsHeader = """<!DOCTYPE HTML>
 	.canvasjs-chart-credit {
 	display: none;
 	}
+
+	.center {
+		margin-left: auto;
+		margin-right: auto;
+		text-align: center;
+	}
+
+	.block {
+		display: block;
+	}
 	</style>
 	<title>%s</title>
 	<meta http-equiv="refresh" content="60" >
@@ -32,11 +42,14 @@ resultsFooter = """
 </html>
 """
 
-DATAPOINTS = 30
-DATAPOINT_STEP = 12*5 # Step size for selecting results, 5 seconds between steps 12=1min
-AXISX_STEP = 30 # X axis intervals step
-AXISX_STEP_TYPE = "minute" # X axis interval type
+DATAPOINTS = 50  # Max results to return
 LINE_THICKNESS = 4
+
+AXISX_STEP = 15  # X axis intervals step
+AXISX_STEP_TYPE = "minute"  # X axis interval type
+
+CHART_SCALE = 60*60*2  # How long ago to display; last 6, 12, 24, whatever hours or minutes expressed as seconds
+
 
 class SqlHandler:
 	def __init__(self):
@@ -46,7 +59,7 @@ class SqlHandler:
 		if not os.path.exists("weather.db"):
 			self.sqlConnection = sqlite3.connect("weather.db")
 			self.sqlCursor = self.sqlConnection.cursor()
-			self.sqlCursor.execute("CREATE TABLE weather (time REAL, temperature REAL, pressure REAL, altitude REAL, humidity REAL, heatIndex REAL)")
+			self.sqlCursor.execute("CREATE TABLE weather (time INTEGER, temperature REAL, pressure REAL, altitude REAL, humidity REAL, heatIndex REAL)")
 			self.sqlConnection.commit()
 		else:
 			self.sqlConnection = sqlite3.connect("weather.db")
@@ -105,7 +118,7 @@ def clientHandler(self):
 					argDict[str(split[0])] = split[1]
 
 			self.server.sqlHandler.push(
-				time.time(),
+				int(time.time()),
 				argDict['temp'],
 				argDict['pressure'],
 				argDict['altitude'],
@@ -143,11 +156,11 @@ def generateChartHtml(chart):
 	def format_axis_items(axis):
 		output = []
 
-		for k,v in axis.items():
+		for k, v in axis.items():
 			if type(v) is bool:
 				v = "true" if v else "false"
 			elif type(v) is str:
-				v = '"%s"'%v
+				v = '"%s"' % v
 
 			output.append("%s: %s" % (k, v))
 
@@ -164,6 +177,7 @@ def generateChartHtml(chart):
 				axisX: {
 					interval: %s,
 					intervalType: "%s",
+					valueFormatString: "MM/DD HH:mm",
 					%s
 
 				},
@@ -193,6 +207,7 @@ def generateChartHtml(chart):
 			)
 
 	return output
+
 
 if __name__ == "__main__":
 	sqlHandler = SqlHandler()
@@ -241,11 +256,31 @@ if __name__ == "__main__":
 				{},
 				{
 					"includeZero": False,
-					"suffix": "*F"
+					"suffix": "&deg;F"
 				},
 				lambda x: round((x*1.8)+32, 2),
 			)
 		)
+
+	def query_result():
+		resultsInTimeframe = sqlHandler.query("SELECT COUNT(rowid), MIN(time), MAX(rowid), MIN(rowid) FROM weather WHERE time > ?", time.time()-CHART_SCALE)
+
+		if not resultsInTimeframe:
+			return []
+
+		count, minTime, maxRowid, minRowid = resultsInTimeframe[0]
+		step = (maxRowid-minRowid)//DATAPOINTS
+
+		# If DATAPOINTS is greater than the available data then just display all using step = 1
+		if step == 0:
+			step = 1
+
+		rowIds = [x for x in range(minRowid, maxRowid) if not x % step]
+
+		query = "SELECT temperature, pressure, altitude, humidity, heatIndex, time FROM weather WHERE rowid IN (%s) ORDER BY time DESC"
+		return sqlHandler.query(query % ", ".join("?"*len(rowIds)), *rowIds)
+
+		#return sqlHandler.query("SELECT temperature, pressure, altitude, humidity, heatIndex, time FROM weather WHERE ROWID % ? = 0 AND time > ? ORDER BY time DESC LIMIT ?", manualStep, beginTime, DATAPOINTS)
 
 	def handle_poll():
 		sqlHandler.flush()
@@ -256,7 +291,7 @@ if __name__ == "__main__":
 			except queue.Empty:
 				break
 
-			queryResult = sqlHandler.query("SELECT temperature, pressure, altitude, humidity, heatIndex, time FROM weather WHERE ROWID % ? = 0 ORDER BY time DESC LIMIT ?", DATAPOINT_STEP, DATAPOINTS)
+			queryResult = query_result()
 
 			data = resultsHeader
 
@@ -266,10 +301,25 @@ if __name__ == "__main__":
 
 			data += resultsMid
 
-			data += '<div style="display: block; margin-left: auto; margin-right: auto; text-align: center;"><h1>%s</h1><h2 style="margin-top: -1em;">%s</h2></div>' % (time.strftime("%A, %B %d"), time.strftime("%H:%M"))
+			current = sqlHandler.query("SELECT temperature, pressure, humidity, heatIndex FROM weather ORDER BY rowid DESC LIMIT 1")[0]
+			currentInfoHtml = '<h2 style="margin-top: -1em;">%s</h2><h4 style="margin-top: -1em;">Currently: %s&deg;F - Humidity: %s%% - Pressure: %smb</h4>' % (time.strftime("%H:%M"), round((current[0]*1.8)+32, 2), current[2], round(current[1]*.01, 2))
 
-			for index in (0, 1, 3, 4):
-				data += '<div id="chartContainer%s" style="width: 90%%; margin-left: auto; margin-right: auto; height: 160px;display: block;"></div><br />\n' % index
+			# Add the date and time header
+			data += '<div class="block, center"><h1>%s</h1>%s</div>' % (time.strftime("%A, %B %d"), currentInfoHtml)
+
+
+
+			data += ''
+			print(current)
+
+			# If we had no results then state so
+			if not queryResult:
+				data += '<div class="block, center""><br /><br /><br /><br /><br /><br /><br /><h1 style="font-weight: bold; color: red;">No Readings Have Been Logged</h1></div>'
+
+			# Else show the data
+			else:
+				for index in (0, 1, 3, 4):
+					data += '<div id="chartContainer%s" style="width: 90%%; margin-left: auto; margin-right: auto; height: 160px;display: block;"></div><br />\n' % index
 
 			data += resultsFooter
 
