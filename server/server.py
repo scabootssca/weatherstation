@@ -119,7 +119,7 @@ class Server:
 				clientThread = threading.Thread(target=client.handle)
 				clientThread.start()
 
-			# For providing a function to execute upon each poll
+			# For providing a function to execute upon each pollw
 			if self.pollHandlerFunction:
 				self.pollHandlerFunction()
 

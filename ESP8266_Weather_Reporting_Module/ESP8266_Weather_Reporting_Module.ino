@@ -14,7 +14,20 @@
 #define ERROR_LED_PIN 12
 #define REQUEST_LED_PIN 15
 
-#define DEBUG_OUTPUT
+#define ENABLE_BATTERY_READING true
+#define BATTERY_PIN A0
+#define BATTERY_VOLTAGE_ENABLE_PIN 2
+
+// If battery is off then transmit vcc
+#if ENABLE_BATTERY_READING == false
+ADC_MODE(ADC_VCC);
+#endif
+
+// Enable sleep, sleep length in microseconds 20e6 is 20 seconds
+#define ENABLE_DEEP_SLEEP true
+#define DEEP_SLEEP_LENGTH 20e6
+
+#define READING_DELAY 10000
 
 int okLedState = HIGH;
 
@@ -30,10 +43,21 @@ Adafruit_BMP085 bmpSensor;
 
 void setup() {
   Serial.begin(115200);
+  Serial.setTimeout(2000);
+
+  // Wait for serial to initalize
+  while (!Serial) {}
 
   pinMode(OK_LED_PIN, OUTPUT);
   pinMode(ERROR_LED_PIN, OUTPUT);
   pinMode(REQUEST_LED_PIN, OUTPUT);
+
+  #if ENABLE_BATTERY_READING == true
+  pinMode(BATTERY_VOLTAGE_ENABLE_PIN, OUTPUT);
+  digitalWrite(BATTERY_VOLTAGE_ENABLE_PIN, LOW);
+  
+  pinMode(BATTERY_PIN, INPUT);
+  #endif
 
   digitalWrite(OK_LED_PIN, HIGH);
   digitalWrite(ERROR_LED_PIN, HIGH);
@@ -81,23 +105,73 @@ void loop() {
   float dhtHumidity = dhtSensor.readHumidity();
   float dhtHeatIndex = dhtSensor.computeHeatIndex(dhtTemp, dhtHumidity);
 
+  #if ENABLE_BATTERY_READING == true
+  //digitalWrite(BATTERY_VOLTAGE_ENABLE_PIN, HIGH);
+  //delay(10); // Wait for the circuit to switch
+  
+  analogRead(BATTERY_PIN);
+  delay(2); // For ADC to stabalize
+
+  int batteryPercent;
+  int batMinVoltage = 3700;
+  int batMaxVoltage = 4400;
+  
+  
+  float dividerRatio = 4.56;
+
+  int refVoltage = 4550;
+  float fullRangeMult = 1023.0 / 997.81; // Range / MaxMv out of 1V for input signal maxMv being for ref voltage
+  
+  float batteryPinReading = analogRead(BATTERY_PIN);
+  float adcReading = (batteryPinReading * fullRangeMult);
+  float batteryVoltage = adcReading * dividerRatio;
+
+  //digitalWrite(BATTERY_VOLTAGE_ENABLE_PIN, LOW);
+
+
+  if (batteryVoltage <= batMinVoltage) {
+    batteryPercent = 0;
+  } else if (batteryVoltage >= batMaxVoltage) {
+    batteryPercent = 100;
+  } else {
+    batteryPercent = (batteryVoltage - batMinVoltage) * 100 / (batMaxVoltage - batMinVoltage);
+  }
+
+  Serial.print("Pin Reading: ");
+  Serial.println(batteryPinReading);
+
+  Serial.print("Battery Voltage: ");
+  Serial.print(batteryVoltage);
+  Serial.print(" ");
+  Serial.print(batteryPercent);
+  Serial.println("%");
+  
+  #else
+  float batteryVoltage = ESP.getVcc()/1024.0;
+  #endif
+
   digitalWrite(REQUEST_LED_PIN, HIGH);
   digitalWrite(ERROR_LED_PIN, LOW);
 
-  strcat(outputUrl, "/?");
+  strcat(outputUrl, "/report?");
   strcat(outputUrl, "temp=");
+  
   strcat(outputUrl, String((bmpTemp+dhtTemp)/2).c_str());
-  strcat(outputUrl, ",pressure=");
-  strcat(outputUrl, String(bmpPressure).c_str());
-  strcat(outputUrl, ",altitude=");
-  strcat(outputUrl, String(bmpAltitude).c_str());
   strcat(outputUrl, ",humidity=");
   strcat(outputUrl, String(dhtHumidity).c_str());
   strcat(outputUrl, ",heatIndex=");
   strcat(outputUrl, String(dhtHeatIndex).c_str());
+  strcat(outputUrl, ",pressure=");
+  strcat(outputUrl, String(bmpPressure).c_str());
+  strcat(outputUrl, ",altitude=");
+  strcat(outputUrl, String(bmpAltitude).c_str());
+  strcat(outputUrl, ",bat=");
+  strcat(outputUrl, String(batteryVoltage).c_str());
+  //strcat(outputUrl, ",pin=");
+  //strcat(outputUrl, String(batteryPinReading).c_str());
 
   Serial.println(outputUrl);
-
+  
   HTTPClient http;
   http.begin("192.168.1.166", 8080, outputUrl); //HTTP
   int httpCode = http.GET();
@@ -118,6 +192,9 @@ void loop() {
 
   digitalWrite(REQUEST_LED_PIN, LOW);
 
-  delay(5000);
-
+  #if ENABLE_DEEP_SLEEP
+  ESP.deepSleep(DEEP_SLEEP_LENGTH);
+  #else
+  delay(READING_DELAY);
+  #endif
 }

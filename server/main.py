@@ -48,7 +48,7 @@ LINE_THICKNESS = 4
 AXISX_STEP = 15  # X axis intervals step
 AXISX_STEP_TYPE = "minute"  # X axis interval type
 
-CHART_SCALE = 60*60*2  # How long ago to display; last 6, 12, 24, whatever hours or minutes expressed as seconds
+DEFAULT_CHART_SCALE = 60*60*2  # How long ago to display; last 6, 12, 24, whatever hours or minutes expressed as seconds
 
 
 class SqlHandler:
@@ -103,38 +103,52 @@ def clientHandler(self):
 	print("[%s] %s %s" % (time.strftime("%d/%m/%Y %H:%M:%S"), self.address, requestPath))
 
 	if requestType == "GET":
+		# Split and parse the args if there are any
+		argDict = {}
+		if "?" in requestPath:
+			requestPath, argString = requestPath.split("?", 1)
+
+			for arg in argString.split(","):
+				if "=" in arg:
+					split = arg.split("=", 1)
+					argDict[str(split[0])] = split[1]
+
+		# For the canvasjs special path
 		if requestPath == "/canvasjs.min.js":
 			with open("./canvasjs.min.js", "r") as f:
 				content = f.read()
 
 			self.respond(content, "text/javascript")
 
-		elif "?" in requestPath:
-			argDict = {}
-			for arg in requestPath.split("?", 1)[1].split(","):
-				if "=" in arg:
-					split = arg.split("=", 1)
-					argDict[str(split[0])] = split[1]
-
+		# For reporting results
+		elif requestPath == "/report":
+			# Keep having the DHT22 report nan for all fields possibly due to under voltage?
+			# Ignore responses with nan
 			if argDict['temp'] == "nan":
 				self.respond("Rejected for nan", "text/plain")
 				return
 
-			self.server.sqlHandler.push(
-				argDict['bat'],
-				int(time.time()),
-				argDict['temp'],
-				argDict['pressure'],
-				argDict['altitude'],
-				argDict['humidity'],
-				argDict['heatIndex']
-				)
+			try:
+				self.server.sqlHandler.push(
+					argDict['bat'],
+					int(time.time()),
+					argDict['temp'],
+					argDict['pressure'],
+					argDict['altitude'],
+					argDict['humidity'],
+					argDict['heatIndex']
+					)
+			except KeyError:
+				self.respond("Rejected for invalid arguments", "text/plain")
+				return
 
 			self.respond("Accepted:\n%s" % "\n".join(argDict.keys()), "text/plain")
 
+		# Else return the results page
 		else:
-			self.server.replyQueue.put(self)
-			return True
+			self.server.replyQueue.put((argDict, self))
+
+		return True
 
 
 class ChartDefinition:
@@ -147,7 +161,7 @@ class ChartDefinition:
 		self.queryResultFunc = queryResultFunc
 
 
-def generateChartHtml(chart):
+def generateChartHtml(chart, xStep=AXISX_STEP):
 	data = ""
 
 	# Take the data and make it into the chart datapoint format stored in `data`
@@ -202,7 +216,7 @@ def generateChartHtml(chart):
 			chart.render();\n\n''' % (
 				chart.index,
 				chart.title,
-				AXISX_STEP,
+				xStep,
 				AXISX_STEP_TYPE,
 				",\n					".join(format_axis_items(chart.axisX)),
 				",\n					".join(format_axis_items(chart.axisY)),
@@ -275,8 +289,8 @@ if __name__ == "__main__":
 			)
 		)
 
-	def query_result():
-		resultsInTimeframe = sqlHandler.query("SELECT COUNT(rowid), MAX(time), MIN(time), MAX(rowid), MIN(rowid) FROM weather WHERE time > ?", time.time()-CHART_SCALE)
+	def query_result(secondsBack=DEFAULT_CHART_SCALE):
+		resultsInTimeframe = sqlHandler.query("SELECT COUNT(rowid), MAX(time), MIN(time), MAX(rowid), MIN(rowid) FROM weather WHERE time > ?", time.time()-secondsBack)
 
 		if not resultsInTimeframe or resultsInTimeframe[0][0] == 0:
 			return []
@@ -308,25 +322,40 @@ if __name__ == "__main__":
 
 		while True:
 			try:
-				client = server.replyQueue.get(False)
+				argDict, client = server.replyQueue.get(False)
 			except queue.Empty:
 				break
 
-			queryResult = query_result()
+			# Set the seconds back if applicable
+			secondsBack = DEFAULT_CHART_SCALE
+			xStep = AXISX_STEP
+
+			if 'hrs' in argDict:
+				try:
+					secondsBack = int(argDict['hrs'])*60*60
+					xStep = secondsBack/60/15
+				except TypeError:
+					pass
+
+			queryResult = query_result(secondsBack)
 			selectedResults = (0, 1, 3, 4, 5)
 
 			data = resultsHeader
 
 			for index in selectedResults:
 				chart = ChartDefinition(index, chartInfo[index][0], chartInfo[index][1], chartInfo[index][2], queryResult, chartInfo[index][3])
-				data += generateChartHtml(chart)
+				data += generateChartHtml(chart, xStep)
 
 			data += resultsMid
 
-			current = sqlHandler.query("SELECT temperature, pressure, humidity, heatIndex, battery FROM weather ORDER BY rowid DESC LIMIT 1")[0]
-			currentInfoHtml = '<h2 style="margin-top: -1em;">%s</h2><h4 style="margin-top: -1em;">Currently: %s&deg;F - Humidity: %s%% - Pressure: %smb</h4>' % (time.strftime("%H:%M"), round((current[0]*1.8)+32, 2), current[2], round(current[1]*.01, 2))
-			# *.001 cause it's stored in milivolts
-			currentInfoHtml += '<h4 style="margin-top: -1em;">Battery %smV %s%%</h4>' % (round(current[4],1), int(computeBatteryPercent(current[4])))
+			currentInfoHtml = '<h2 style="margin-top: -1em;">%s</h2>' % time.strftime("%H:%M")
+
+			current = sqlHandler.query("SELECT temperature, pressure, humidity, heatIndex, battery FROM weather ORDER BY rowid DESC LIMIT 1")
+			if current:
+				current = current[0]
+				currentInfoHtml += '<h4 style="margin-top: -1em;">Currently: %s&deg;F - Humidity: %s%% - Pressure: %smb</h4>' % (round((current[0] * 1.8) + 32, 2), current[2], round(current[1]*.01, 2))
+				# *.001 cause it's stored in milivolts
+				currentInfoHtml += '<h4 style="margin-top: -1em;">Battery %smV %s%%</h4>' % (round(current[4], 1), int(computeBatteryPercent(current[4])))
 
 			# Add the date and time header
 			data += '<div class="block, center"><h1>%s</h1>%s</div>' % (time.strftime("%A, %B %d"), currentInfoHtml)
