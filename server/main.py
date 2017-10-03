@@ -59,7 +59,7 @@ class SqlHandler:
 		if not os.path.exists("weather.db"):
 			self.sqlConnection = sqlite3.connect("weather.db")
 			self.sqlCursor = self.sqlConnection.cursor()
-			self.sqlCursor.execute("CREATE TABLE weather (time INTEGER, temperature REAL, pressure REAL, altitude REAL, humidity REAL, heatIndex REAL)")
+			self.sqlCursor.execute("CREATE TABLE weather (battery REAL, time INTEGER, temperature REAL, pressure REAL, altitude REAL, humidity REAL, heatIndex REAL)")
 			self.sqlConnection.commit()
 		else:
 			self.sqlConnection = sqlite3.connect("weather.db")
@@ -77,8 +77,7 @@ class SqlHandler:
 			except queue.Empty:
 				break
 
-			# print("Handle Query: %s" % ", ".join((str(x) for x in task)))
-			self.sqlCursor.execute("INSERT INTO weather VALUES (?, ?, ?, ?, ?, ?)", task)
+			self.sqlCursor.execute("INSERT INTO weather VALUES (?, ?, ?, ?, ?, ?, ?)", task)
 			self.queue.task_done()
 
 		if task is not None:
@@ -117,7 +116,12 @@ def clientHandler(self):
 					split = arg.split("=", 1)
 					argDict[str(split[0])] = split[1]
 
+			if argDict['temp'] == "nan":
+				self.respond("Rejected for nan", "text/plain")
+				return
+
 			self.server.sqlHandler.push(
+				argDict['bat'],
 				int(time.time()),
 				argDict['temp'],
 				argDict['pressure'],
@@ -139,7 +143,7 @@ class ChartDefinition:
 		self.title = title
 		self.axisX = axisX
 		self.axisY = axisY
-		self.queryResult = [(i[index], i[5]) for i in queryResult]
+		self.queryResult = [(i[index], i[6]) for i in queryResult]
 		self.queryResultFunc = queryResultFunc
 
 
@@ -229,7 +233,7 @@ if __name__ == "__main__":
 				{},
 				{
 					"includeZero": False,
-					"suffix": " mb"
+					"suffix": "mb"
 				},
 				lambda x: round(x*.01, 2),
 			),
@@ -256,19 +260,28 @@ if __name__ == "__main__":
 				{},
 				{
 					"includeZero": False,
-					"suffix": "&deg;F"
+					"suffix": "*F"
 				},
 				lambda x: round((x*1.8)+32, 2),
+			),
+			(
+				"Battery",
+				{},
+				{
+					"includeZero": False,
+					"suffix": "mV"
+				},
+				lambda x: round(x, 1)
 			)
 		)
 
 	def query_result():
-		resultsInTimeframe = sqlHandler.query("SELECT COUNT(rowid), MIN(time), MAX(rowid), MIN(rowid) FROM weather WHERE time > ?", time.time()-CHART_SCALE)
+		resultsInTimeframe = sqlHandler.query("SELECT COUNT(rowid), MAX(time), MIN(time), MAX(rowid), MIN(rowid) FROM weather WHERE time > ?", time.time()-CHART_SCALE)
 
-		if not resultsInTimeframe:
+		if not resultsInTimeframe or resultsInTimeframe[0][0] == 0:
 			return []
 
-		count, minTime, maxRowid, minRowid = resultsInTimeframe[0]
+		count, maxTime, minTime, maxRowid, minRowid = resultsInTimeframe[0]
 		step = (maxRowid-minRowid)//DATAPOINTS
 
 		# If DATAPOINTS is greater than the available data then just display all using step = 1
@@ -277,10 +290,18 @@ if __name__ == "__main__":
 
 		rowIds = [x for x in range(minRowid, maxRowid) if not x % step]
 
-		query = "SELECT temperature, pressure, altitude, humidity, heatIndex, time FROM weather WHERE rowid IN (%s) ORDER BY time DESC"
+		query = "SELECT temperature, pressure, altitude, humidity, heatIndex, battery, time FROM weather WHERE rowid IN (%s) ORDER BY time DESC"
 		return sqlHandler.query(query % ", ".join("?"*len(rowIds)), *rowIds)
 
 		#return sqlHandler.query("SELECT temperature, pressure, altitude, humidity, heatIndex, time FROM weather WHERE ROWID % ? = 0 AND time > ? ORDER BY time DESC LIMIT ?", manualStep, beginTime, DATAPOINTS)
+
+	def computeBatteryPercent(voltage, minVoltage=3700, maxVoltage=4200):
+		if voltage <= minVoltage:
+			return 0
+		elif voltage >= maxVoltage:
+			return 100
+
+		return (voltage - minVoltage) * 100 / (maxVoltage - minVoltage)
 
 	def handle_poll():
 		sqlHandler.flush()
@@ -292,23 +313,25 @@ if __name__ == "__main__":
 				break
 
 			queryResult = query_result()
+			selectedResults = (0, 1, 3, 4, 5)
 
 			data = resultsHeader
 
-			for index in (0, 1, 3, 4):
+			for index in selectedResults:
 				chart = ChartDefinition(index, chartInfo[index][0], chartInfo[index][1], chartInfo[index][2], queryResult, chartInfo[index][3])
 				data += generateChartHtml(chart)
 
 			data += resultsMid
 
-			current = sqlHandler.query("SELECT temperature, pressure, humidity, heatIndex FROM weather ORDER BY rowid DESC LIMIT 1")[0]
+			current = sqlHandler.query("SELECT temperature, pressure, humidity, heatIndex, battery FROM weather ORDER BY rowid DESC LIMIT 1")[0]
 			currentInfoHtml = '<h2 style="margin-top: -1em;">%s</h2><h4 style="margin-top: -1em;">Currently: %s&deg;F - Humidity: %s%% - Pressure: %smb</h4>' % (time.strftime("%H:%M"), round((current[0]*1.8)+32, 2), current[2], round(current[1]*.01, 2))
+			# *.001 cause it's stored in milivolts
+			currentInfoHtml += '<h4 style="margin-top: -1em;">Battery %smV %s%%</h4>' % (round(current[4],1), int(computeBatteryPercent(current[4])))
 
 			# Add the date and time header
 			data += '<div class="block, center"><h1>%s</h1>%s</div>' % (time.strftime("%A, %B %d"), currentInfoHtml)
 
 			data += ''
-			print(current)
 
 			# If we had no results then state so
 			if not queryResult:
@@ -316,7 +339,7 @@ if __name__ == "__main__":
 
 			# Else show the data
 			else:
-				for index in (0, 1, 3, 4):
+				for index in selectedResults:
 					data += '<div id="chartContainer%s" style="width: 90%%; margin-left: auto; margin-right: auto; height: 160px;display: block;"></div><br />\n' % index
 
 			data += resultsFooter
