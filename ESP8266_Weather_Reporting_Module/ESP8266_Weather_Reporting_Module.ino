@@ -1,4 +1,5 @@
 #include <Wire.h>
+#include <gpio.h>
 
 // WiFi
 #include <ESP8266WiFi.h>
@@ -16,20 +17,20 @@
 
 #define ENABLE_BATTERY_READING true
 #define BATTERY_PIN A0
-#define BATTERY_VOLTAGE_ENABLE_PIN 2
+#define BATTERY_VOLTAGE_ENABLE_PIN 10
+
+// Enable sleep, sleep length in microseconds 20e6 is 20 seconds
+#define ENABLE_DEEP_SLEEP true
+#define DEEP_SLEEP_LENGTH 60e6
+
+#define NO_SLEEP_READING_DELAY 5000
+
+int okLedState = HIGH;
 
 // If battery is off then transmit vcc
 #if ENABLE_BATTERY_READING == false
 ADC_MODE(ADC_VCC);
 #endif
-
-// Enable sleep, sleep length in microseconds 20e6 is 20 seconds
-#define ENABLE_DEEP_SLEEP true
-#define DEEP_SLEEP_LENGTH 20e6
-
-#define READING_DELAY 10000
-
-int okLedState = HIGH;
 
 // WiFi Variables
 #include "./login.h"
@@ -106,28 +107,33 @@ void loop() {
   float dhtHeatIndex = dhtSensor.computeHeatIndex(dhtTemp, dhtHumidity);
 
   #if ENABLE_BATTERY_READING == true
-  //digitalWrite(BATTERY_VOLTAGE_ENABLE_PIN, HIGH);
-  //delay(10); // Wait for the circuit to switch
+  digitalWrite(BATTERY_VOLTAGE_ENABLE_PIN, HIGH);
+  delay(10); // Wait for the circuit to switch
   
   analogRead(BATTERY_PIN);
   delay(2); // For ADC to stabalize
+
+  float batteryPinReading = analogRead(BATTERY_PIN);
+  
+  digitalWrite(BATTERY_VOLTAGE_ENABLE_PIN, LOW);
 
   int batteryPercent;
   int batMinVoltage = 3700;
   int batMaxVoltage = 4400;
   
+
+  //float maxReading = 997.81;
+
+  //Serial.print("New Reading: ");
+  //Serial.println(batteryPinReading/maxReading);
   
   float dividerRatio = 4.56;
 
   int refVoltage = 4550;
   float fullRangeMult = 1023.0 / 997.81; // Range / MaxMv out of 1V for input signal maxMv being for ref voltage
   
-  float batteryPinReading = analogRead(BATTERY_PIN);
   float adcReading = (batteryPinReading * fullRangeMult);
   float batteryVoltage = adcReading * dividerRatio;
-
-  //digitalWrite(BATTERY_VOLTAGE_ENABLE_PIN, LOW);
-
 
   if (batteryVoltage <= batMinVoltage) {
     batteryPercent = 0;
@@ -155,8 +161,14 @@ void loop() {
 
   strcat(outputUrl, "/report?");
   strcat(outputUrl, "temp=");
-  
-  strcat(outputUrl, String((bmpTemp+dhtTemp)/2).c_str());
+
+  Serial.println(dhtTemp);
+
+  if (dhtTemp) {
+    strcat(outputUrl, String((bmpTemp+dhtTemp)/2).c_str());
+  } else {
+    strcat(outputUrl, String(bmpTemp).c_str());
+  }
   strcat(outputUrl, ",humidity=");
   strcat(outputUrl, String(dhtHumidity).c_str());
   strcat(outputUrl, ",heatIndex=");
@@ -195,6 +207,6 @@ void loop() {
   #if ENABLE_DEEP_SLEEP
   ESP.deepSleep(DEEP_SLEEP_LENGTH);
   #else
-  delay(READING_DELAY);
+  delay(NO_SLEEP_READING_DELAY);
   #endif
 }

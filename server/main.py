@@ -309,7 +309,7 @@ if __name__ == "__main__":
 
 		#return sqlHandler.query("SELECT temperature, pressure, altitude, humidity, heatIndex, time FROM weather WHERE ROWID % ? = 0 AND time > ? ORDER BY time DESC LIMIT ?", manualStep, beginTime, DATAPOINTS)
 
-	def computeBatteryPercent(voltage, minVoltage=3700, maxVoltage=4200):
+	def computeBatteryPercent(voltage, minVoltage=3700, maxVoltage=4100):
 		if voltage <= minVoltage:
 			return 0
 		elif voltage >= maxVoltage:
@@ -372,6 +372,9 @@ if __name__ == "__main__":
 					data += '<div id="chartContainer%s" style="width: 90%%; margin-left: auto; margin-right: auto; height: 160px;display: block;"></div><br />\n' % index
 
 			data += resultsFooter
+
+			with open("out.htm", "w") as outFile:
+				outFile.write(data)
 
 			client.respond(data, "text/html")
 			client.server.disconnect_client(client)
