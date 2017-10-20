@@ -15,6 +15,8 @@
 #define ERROR_LED_PIN 12
 #define REQUEST_LED_PIN 15
 
+#define SERVER_IP_ADDRESS "192.168.1.160"
+
 #define ENABLE_BATTERY_READING true
 #define BATTERY_PIN A0
 #define BATTERY_VOLTAGE_ENABLE_PIN 10
@@ -23,8 +25,10 @@
 #define ENABLE_DEEP_SLEEP true
 #define DEEP_SLEEP_LENGTH 60e6
 
-#define NO_SLEEP_READING_DELAY 5000
+// 60 Seconds for delay with deep sleep disabled
+#define NO_SLEEP_READING_DELAY 60000
 
+#define LED_PWM_VALUE 300
 int okLedState = HIGH;
 
 // If battery is off then transmit vcc
@@ -60,8 +64,8 @@ void setup() {
   pinMode(BATTERY_PIN, INPUT);
   #endif
 
-  digitalWrite(OK_LED_PIN, HIGH);
-  digitalWrite(ERROR_LED_PIN, HIGH);
+  analogWrite(OK_LED_PIN, LED_PWM_VALUE);
+  analogWrite(ERROR_LED_PIN, LED_PWM_VALUE);
   digitalWrite(REQUEST_LED_PIN, LOW);
 
   Serial.print("Connecting to WiFi");
@@ -70,12 +74,12 @@ void setup() {
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     okLedState = !okLedState;
-    digitalWrite(OK_LED_PIN, okLedState);
+    analogWrite(OK_LED_PIN, okLedState ? LED_PWM_VALUE : 0);
     Serial.print(".");
   }
   
   okLedState = HIGH;
-  digitalWrite(OK_LED_PIN, okLedState);
+  analogWrite(OK_LED_PIN, okLedState ? LED_PWM_VALUE : 0);
   digitalWrite(ERROR_LED_PIN, LOW);
 
   Serial.println("");
@@ -84,7 +88,7 @@ void setup() {
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  bmpSensor.begin();
+  bmpSensor.begin(BMP085_ULTRALOWPOWER);
 
   // Need to wait 2 seconds for dhtSensor to initalize
   Serial.println("Reading...");
@@ -156,10 +160,10 @@ void loop() {
   float batteryVoltage = ESP.getVcc()/1024.0;
   #endif
 
-  digitalWrite(REQUEST_LED_PIN, HIGH);
+  analogWrite(REQUEST_LED_PIN, LED_PWM_VALUE);
   digitalWrite(ERROR_LED_PIN, LOW);
 
-  strcat(outputUrl, "/report?");
+  strcat(outputUrl, "/report.php?");
   strcat(outputUrl, "temp=");
 
   Serial.println(dhtTemp);
@@ -169,23 +173,27 @@ void loop() {
   } else {
     strcat(outputUrl, String(bmpTemp).c_str());
   }
-  strcat(outputUrl, ",humidity=");
+  strcat(outputUrl, "&humidity=");
   strcat(outputUrl, String(dhtHumidity).c_str());
-  strcat(outputUrl, ",heatIndex=");
+  strcat(outputUrl, "&heatIndex=");
   strcat(outputUrl, String(dhtHeatIndex).c_str());
-  strcat(outputUrl, ",pressure=");
+  strcat(outputUrl, "&pressure=");
   strcat(outputUrl, String(bmpPressure).c_str());
-  strcat(outputUrl, ",altitude=");
+  strcat(outputUrl, "&altitude=");
   strcat(outputUrl, String(bmpAltitude).c_str());
-  strcat(outputUrl, ",bat=");
+  strcat(outputUrl, "&bat=");
   strcat(outputUrl, String(batteryVoltage).c_str());
-  //strcat(outputUrl, ",pin=");
-  //strcat(outputUrl, String(batteryPinReading).c_str());
 
+  int port = 80;
+  char ip[] = SERVER_IP_ADDRESS;
+
+  Serial.print(ip);
+  Serial.print(":");
+  Serial.print(port);
   Serial.println(outputUrl);
   
   HTTPClient http;
-  http.begin("192.168.1.166", 8080, outputUrl); //HTTP
+  http.begin(ip, port, outputUrl); //HTTP
   int httpCode = http.GET();
 
   if(httpCode > 0) {
@@ -197,7 +205,7 @@ void loop() {
     }
   } else {
     Serial.println(httpCode);
-    digitalWrite(ERROR_LED_PIN, HIGH);
+    analogWrite(ERROR_LED_PIN, LED_PWM_VALUE);
   }
 
   http.end();
