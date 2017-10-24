@@ -13,7 +13,7 @@
 // Misc Variables
 #define OK_LED_PIN 14
 #define ERROR_LED_PIN 12
-#define REQUEST_LED_PIN 15
+#define REQUEST_LED_PIN 2
 
 #define SERVER_IP_ADDRESS "192.168.1.160"
 
@@ -22,7 +22,7 @@
 #define BATTERY_VOLTAGE_ENABLE_PIN 10
 
 // Enable sleep, sleep length in microseconds 20e6 is 20 seconds
-#define ENABLE_DEEP_SLEEP true
+#define ENABLE_DEEP_SLEEP false
 #define DEEP_SLEEP_LENGTH 60e6
 
 // 60 Seconds for delay with deep sleep disabled
@@ -44,7 +44,20 @@ ADC_MODE(ADC_VCC);
 #define DHTTYPE DHT22
 DHT dhtSensor(DHTPIN, DHTTYPE);
 
+#define ANEMOMETOR_PIN 15
+#define ANEMOMETOR_SAMPLE_LENGTH 30000 // In ms
+unsigned int anemometorSampleCount = 0;
+unsigned long lastAnemometorSamplePrint = 0;
+unsigned long lastAnemometorInterrupt = 0;
+
 Adafruit_BMP085 bmpSensor;
+
+void handleAnemometorInterrupt() {
+  if (millis()-lastAnemometorInterrupt > 50) {
+    lastAnemometorInterrupt = millis();
+    anemometorSampleCount++;
+  }
+}
 
 void setup() {
   Serial.begin(115200);
@@ -64,9 +77,16 @@ void setup() {
   pinMode(BATTERY_PIN, INPUT);
   #endif
 
+  /* Start the anemometor counting here so we have a larger result length */
+  pinMode(ANEMOMETOR_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(ANEMOMETOR_PIN), handleAnemometorInterrupt, RISING);
+
+  anemometorSampleCount = 0;
+  lastAnemometorSamplePrint = millis();
+  
   analogWrite(OK_LED_PIN, LED_PWM_VALUE);
   analogWrite(ERROR_LED_PIN, LED_PWM_VALUE);
-  digitalWrite(REQUEST_LED_PIN, LOW);
+  analogWrite(REQUEST_LED_PIN, 0);
 
   Serial.print("Connecting to WiFi");
   WiFi.begin(ssid, password);
@@ -80,7 +100,7 @@ void setup() {
   
   okLedState = HIGH;
   analogWrite(OK_LED_PIN, okLedState ? LED_PWM_VALUE : 0);
-  digitalWrite(ERROR_LED_PIN, LOW);
+  analogWrite(ERROR_LED_PIN, 0);
 
   Serial.println("");
   Serial.print("Connected to ");
@@ -100,6 +120,35 @@ void loop() {
   char outputUrl[800] = "";
   char buffer[15];
 
+  /* ANEMOMETOR BLOCK */
+  /********************/
+  // Delay longer if it hasn't been 30 seconds
+  // Samples will count using interrupts
+  long msToDelayAnemometor = ANEMOMETOR_SAMPLE_LENGTH-(millis()-lastAnemometorSamplePrint);
+  if (msToDelayAnemometor > 0) {
+    Serial.print("Sampling anemometor for an additional ");
+    Serial.print(msToDelayAnemometor/1000);
+    Serial.println(" seconds.");
+    
+    delay(msToDelayAnemometor);
+  }
+  
+  int millisNow = millis();
+  int numTimelyAnemometorSamples = anemometorSampleCount;
+  int anemometorRpm = numTimelyAnemometorSamples*(60.0/((millisNow-lastAnemometorSamplePrint)/1000.0));
+
+  Serial.print(numTimelyAnemometorSamples);
+  Serial.print(" Samples in last ");
+  Serial.print((millisNow-lastAnemometorSamplePrint)/1000.0);
+  Serial.print(" second ");
+  Serial.print(anemometorRpm);
+  Serial.println(" RPM");
+
+  anemometorSampleCount -= numTimelyAnemometorSamples;
+  lastAnemometorSamplePrint = millisNow;
+
+  /* TEMPERATURE, HUMIDITY, BAROMETER BLOCK */
+  /******************************************/
   float seaLevelPressure = 1017.2*100;
 
   float bmpTemp = bmpSensor.readTemperature();
@@ -160,13 +209,12 @@ void loop() {
   float batteryVoltage = ESP.getVcc()/1024.0;
   #endif
 
+  /* OUTPUT BLOCK */
   analogWrite(REQUEST_LED_PIN, LED_PWM_VALUE);
-  digitalWrite(ERROR_LED_PIN, LOW);
+  analogWrite(ERROR_LED_PIN, 0);
 
   strcat(outputUrl, "/report.php?");
   strcat(outputUrl, "temp=");
-
-  Serial.println(dhtTemp);
 
   if (dhtTemp) {
     strcat(outputUrl, String((bmpTemp+dhtTemp)/2).c_str());
@@ -183,6 +231,8 @@ void loop() {
   strcat(outputUrl, String(bmpAltitude).c_str());
   strcat(outputUrl, "&bat=");
   strcat(outputUrl, String(batteryVoltage).c_str());
+  strcat(outputUrl, "&windSpeed=");
+  strcat(outputUrl, String(anemometorRpm).c_str());
 
   int port = 80;
   char ip[] = SERVER_IP_ADDRESS;
@@ -209,8 +259,8 @@ void loop() {
   }
 
   http.end();
-
-  digitalWrite(REQUEST_LED_PIN, LOW);
+  
+  analogWrite(REQUEST_LED_PIN, 0);
 
   #if ENABLE_DEEP_SLEEP
   ESP.deepSleep(DEEP_SLEEP_LENGTH);
