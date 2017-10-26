@@ -22,15 +22,24 @@ $valueMap = array(
 
 $submitKeys = [];
 $submitValues = [];
+$hasSecretKey = false;
 
 foreach ($_GET as $getKey => $getValue) {
+	if ($getValue == "nan") {
+		continue;
+	}
+
+	if ($getKey == "key" && $getValue == "frieggandham") {
+		$hasSecretKey = true;
+	}
+
 	if (array_key_exists($getKey,  $valueMap)) {
 		array_push($submitKeys, $dbConn->real_escape_string($valueMap[$getKey]));
 		array_push($submitValues, $dbConn->real_escape_string($getValue));
 	}
 }
 
-if (count($submitKeys)) {
+if ($hasSecretKey && count($submitKeys)) {
 	$query = sprintf("INSERT INTO records (time, %s) VALUES (UNIX_TIMESTAMP(), %s)",
 		join(", ", $submitKeys),
 		join(", ", $submitValues)
@@ -39,9 +48,12 @@ if (count($submitKeys)) {
 	if ($dbConn->query($query)) {
 		printf("Success");
 	} else {
-		printf("Failure");
+		printf("Failure\n");
 		printf($dbConn->error);
 	}
+} else {
+	printf("Failure\n");
+	printf("Wrong count or no secret key");
 }
 
 $dbConn->close();

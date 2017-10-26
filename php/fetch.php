@@ -6,12 +6,12 @@ define('CHART_MAX_DATAPOINTS', 200); // Max 50 datapoints in each chart
 
 global $chartAttributes;
 $chartAttributes = array(
-	2=>array("Temperature", "*F", function ($x) { return ($x*1.8)+32; }),
-	3=>array("Humidity", "%", NULL),
-	4=>array("Heat Index", "*F", function ($x) { return ($x*1.8)+32; }),
-	5=>array("Pressure", "mb", function ($x) { return round($x*.01, 2); }),
-	6=>array("Battery", "mV", function ($x) { return round($x, 1); }),
-	7=>array("Wind Speed", "rpm", NULL)
+	2=>array("Temperature", "*F", function ($x) { return round(($x*1.8)+32, 2); }, 'spline'),
+	3=>array("Humidity", "%", NULL, 'spline'),
+	4=>array("Heat Index", "*F", function ($x) { return round(($x*1.8)+32, 2); }, 'spline'),
+	5=>array("Pressure", "mb", function ($x) { return round($x*.01, 2); }, 'spline'),
+	6=>array("Battery", "mV", function ($x) { return round($x, 1); }, 'line'),
+	7=>array("Wind Speed", "rpm", NULL, 'spline')
 );
 
 Class ChartDefinition {
@@ -30,6 +30,9 @@ Class ChartDefinition {
 				},
 				animationEnabled: false,
 
+				toolTip: {
+				},
+
 				axisX: {
 					interval: %s,
 					intervalType: "%s",
@@ -40,8 +43,10 @@ Class ChartDefinition {
 					suffix: "%s"
 				},
 				data: [{
-					type: "line",
+					type: "%s",
 					lineThickness: %s,
+					markerSize: 0,
+					connectNullData: true,
 					dataPoints: [
 					%s
 					]
@@ -82,6 +87,7 @@ Class ChartDefinition {
 			ceil($interval),
 			$spacing,
 			$chartVars[1],
+			$chartVars[3],
 			3,
 			$this->generate_data_points($queryResults, $chartVars[2]),
 			$this->index,
@@ -98,11 +104,19 @@ Class ChartDefinition {
 		// Does unixtime*1000 cause Date in js dates milliseconds
 		if ($modifierFunction != NULL) {
 			foreach ($queryResults as $row) {
-				$output[] = sprintf("{ x: new Date(%s), y: %s }", $row[1]*1000, $modifierFunction($row[$this->index]));
+				if (gettype($row[$this->index]) == "NULL") {
+					$output[] = sprintf("{ x: new Date(%s), y: null }", $row[1]*1000);
+				} else {
+					$output[] = sprintf("{ x: new Date(%s), y: %s }", $row[1]*1000, $modifierFunction($row[$this->index]));
+				}
 			}
 		} else {
 			foreach ($queryResults as $row) {
-				$output[] = sprintf("{ x: new Date(%s), y: %s }", $row[1]*1000, $row[$this->index]);
+				if (gettype($row[$this->index]) == "NULL") {
+					$output[] = sprintf("{ x: new Date(%s), y: null }", $row[1]*1000);
+				} else {
+					$output[] = sprintf("{ x: new Date(%s), y: %s }", $row[1]*1000, $row[$this->index]);
+				}
 			}
 		}
 
@@ -134,7 +148,7 @@ function generate_chart_html($chartIndices) {
 
 function generate_chart_header($dbConn) {
 	// Get the most recent entry for the current stats
-	$query = "SELECT temperature, humidity, heatIndex, pressure, batteryMv, time FROM records ORDER BY time DESC LIMIT 1";
+	$query = "SELECT temperature, humidity, heatIndex, pressure, batteryMv, time, windSpeed FROM records ORDER BY time DESC LIMIT 1";
 
 	printf('<div class="block, center"><h1>%s</h1>', strftime("%A, %B %d"));
 	printf('<h2 style="margin-top: -1em;">%s</h2>', strftime("%H:%M"));
@@ -144,10 +158,11 @@ function generate_chart_header($dbConn) {
 	 		$currentInfo = $queryResult->fetch_row();
 
 			printf(
-				'<h4 style="margin-top: -1em;">Currently: %s&deg;F - Humidity: %s%% - Pressure: %smb</h4>',
+				'<h4 style="margin-top: -1em;">Currently: %s&deg;F - Humidity: %s%% - Pressure: %smb - Wind: %srpm</h4>',
 				round(($currentInfo[0]*1.8)+32, 2),
 				$currentInfo[1],
-				round($currentInfo[3]*.01, 2)
+				round($currentInfo[3]*.01, 2),
+				$currentInfo[6]
 			);
 
 			$voltage = $currentInfo[4];
@@ -229,7 +244,7 @@ function generatePage() {
 		// If we have results
 		if ($queryResult->num_rows > 0) {
 			// Generate the js for all the charts
-			$chartIndices = array(2, 3, 4, 5, 6, 7);
+			$chartIndices = array(2, 3, 4, 5, 7, 6);
 			generate_chart_javascript($queryResult, $chartIndices);
 
 			// This is an alpha for auto updating the charts
@@ -237,6 +252,12 @@ function generatePage() {
 			// Then this can fetch and update the values with jquery
 			printf("<script src=\"./update.js\"></script>\n");
 			printf("</head><body>\n");
+
+			printf("<div id=\"slider\">
+      <div class=\"handle\" style=\"left: 382.508px;\">
+        <div class=\"line\"></div>
+      </div>
+    </div>\n");
 
 			//printf("<button onclick=\"updateData()\">Update</button>");
 
@@ -252,6 +273,14 @@ function generatePage() {
 	} else {
 		show_no_results("Unsucessful Query");
 	}
+	print("<script src=\"init.js\"></script>");
+
+	if (isset($_GET['l'])) {
+		print("<style type=\"text/css\">#slider {
+			display: block !important;
+		}</style>");
+	}
+
 	print("</body></html>");
 
 	$dbConn->close();
