@@ -3,52 +3,49 @@
 
 // WiFi
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
 #include <ESP8266HTTPClient.h>
 
-// Sensor Includes
-#include <Adafruit_BMP085.h>
-#include <DHT.h>
+// WiFi Variables
+#include "./login.h"
 
-// Misc Variables
-#define OK_LED_PIN 14
-#define ERROR_LED_PIN 12
-#define REQUEST_LED_PIN 2
+// Sensor Includes
+#include "./heatIndex.h"
+#include "./SparkFun_RHT03.h"
+
+#include <Adafruit_BMP085.h>
 
 #define SERVER_IP_ADDRESS "192.168.1.160"
+#define LED_PWM_VALUE 300
 
-#define ENABLE_BATTERY_READING true
+#define ENABLE_BATTERY_READING false
+
+#define ENABLE_DEEP_SLEEP false // Enable sleep, sleep length in microseconds 20e6 is 20 seconds
+#define DEEP_SLEEP_LENGTH 60e6
+#define NO_SLEEP_READING_DELAY 60000 // 60 Seconds for delay with deep sleep disabled
+
+int okLedState = HIGH;
+
+// Pin Assignments
+#define OK_LED_PIN D8
+#define ERROR_LED_PIN D6
+
 #define BATTERY_PIN A0
 #define BATTERY_VOLTAGE_ENABLE_PIN 10
-
-// Enable sleep, sleep length in microseconds 20e6 is 20 seconds
-#define ENABLE_DEEP_SLEEP false
-#define DEEP_SLEEP_LENGTH 60e6
-
-// 60 Seconds for delay with deep sleep disabled
-#define NO_SLEEP_READING_DELAY 60000
-
-#define LED_PWM_VALUE 300
-int okLedState = HIGH;
 
 // If battery is off then transmit vcc
 #if ENABLE_BATTERY_READING == false
 ADC_MODE(ADC_VCC);
 #endif
 
-// WiFi Variables
-#include "./login.h"
-
 // Sensor Variables
-#define DHTPIN 13
-#define DHTTYPE DHT22
-DHT dhtSensor(DHTPIN, DHTTYPE);
+#define DHT_PIN D7
+RHT03 dhtSensor;
 
-#define ANEMOMETOR_PIN 15
+#define ANEMOMETOR_PIN D5
 #define ANEMOMETOR_SAMPLE_LENGTH 30000 // In ms
-unsigned int anemometorSampleCount = 0;
+volatile unsigned int anemometorSampleCount = 0;
 unsigned long lastAnemometorSamplePrint = 0;
-unsigned long lastAnemometorInterrupt = 0;
+volatile unsigned long lastAnemometorInterrupt = 0;
 
 Adafruit_BMP085 bmpSensor;
 
@@ -59,6 +56,32 @@ void handleAnemometorInterrupt() {
   }
 }
 
+void connectToWiFi(char* ssid, char* passwd) {
+//  WiFi.forceSleepWake();
+//  wifi_set_sleep_type(MODEM_SLEEP_T);
+//  if ((WiFi.status() != WL_CONNECTED) {
+//    WiFi.mode(WIFI_STA);
+//    WiFi.begin(ssid, password);
+//  }
+  
+
+  
+}
+
+void delayForWiFi() {
+  Serial.print("Connecting to WiFi");
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    okLedState = !okLedState;
+    analogWrite(OK_LED_PIN, okLedState ? LED_PWM_VALUE : 0);
+    Serial.print(".");
+  }
+
+  okLedState = LOW;
+  analogWrite(OK_LED_PIN, 0);
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.setTimeout(2000);
@@ -66,10 +89,13 @@ void setup() {
   // Wait for serial to initalize
   while (!Serial) {}
 
+  // LEDs
   pinMode(OK_LED_PIN, OUTPUT);
   pinMode(ERROR_LED_PIN, OUTPUT);
-  pinMode(REQUEST_LED_PIN, OUTPUT);
+  analogWrite(OK_LED_PIN, LED_PWM_VALUE);
+  analogWrite(ERROR_LED_PIN, LED_PWM_VALUE);
 
+  // For battery instead of vcc reading
   #if ENABLE_BATTERY_READING == true
   pinMode(BATTERY_VOLTAGE_ENABLE_PIN, OUTPUT);
   digitalWrite(BATTERY_VOLTAGE_ENABLE_PIN, LOW);
@@ -77,51 +103,74 @@ void setup() {
   pinMode(BATTERY_PIN, INPUT);
   #endif
 
-  /* Start the anemometor counting here so we have a larger result length */
+  
+  //******************************
+  //* Start Anemometor Counting
+  //******************************
   pinMode(ANEMOMETOR_PIN, INPUT);
   attachInterrupt(digitalPinToInterrupt(ANEMOMETOR_PIN), handleAnemometorInterrupt, RISING);
-
   anemometorSampleCount = 0;
   lastAnemometorSamplePrint = millis();
-  
-  analogWrite(OK_LED_PIN, LED_PWM_VALUE);
-  analogWrite(ERROR_LED_PIN, LED_PWM_VALUE);
-  analogWrite(REQUEST_LED_PIN, 0);
 
-  Serial.print("Connecting to WiFi");
+  //******************************
+  //* Start BMP and DHT sensors
+  //******************************
+  bmpSensor.begin(BMP085_ULTRALOWPOWER);
+  dhtSensor.begin(DHT_PIN);
+
+  //*************************
+  //* Start Wifi
+  //*************************
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    okLedState = !okLedState;
-    analogWrite(OK_LED_PIN, okLedState ? LED_PWM_VALUE : 0);
-    Serial.print(".");
-  }
+  delayForWiFi();
   
-  okLedState = HIGH;
-  analogWrite(OK_LED_PIN, okLedState ? LED_PWM_VALUE : 0);
-  analogWrite(ERROR_LED_PIN, 0);
-
   Serial.println("");
   Serial.print("Connected to ");
   Serial.println(ssid);
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  bmpSensor.begin(BMP085_ULTRALOWPOWER);
-
-  // Need to wait 2 seconds for dhtSensor to initalize
-  Serial.println("Reading...");
-  delay(2000);
-
+  analogWrite(ERROR_LED_PIN, 0);
 }
 
 void loop() {
-  char outputUrl[800] = "";
-  char buffer[15];
+  Serial.println("Starting Sensing");
+  
+  // First reset any error lights from last runs
+  analogWrite(ERROR_LED_PIN, 0);
+  analogWrite(OK_LED_PIN, LED_PWM_VALUE);
 
-  /* ANEMOMETOR BLOCK */
-  /********************/
+  //******************************************/
+  //* TEMPERATURE, HUMIDITY, BAROMETER BLOCK */
+  //******************************************/
+  Serial.println("Sensing BMP");
+  float seaLevelPressure = 1017.2*100;
+
+  float bmpTemp = bmpSensor.readTemperature();
+  float bmpPressure = bmpSensor.readPressure();
+  float bmpAltitude = bmpSensor.readAltitude(seaLevelPressure);
+
+  Serial.println("Sensing DHT22");
+  delay(RHT_READ_INTERVAL_MS);
+  int updateResult = dhtSensor.update();
+
+  if (updateResult != 1) {
+    Serial.println("Problem reading DHT22");
+  }
+  
+  float dhtTemp = dhtSensor.tempC();
+  float dhtHumidity = dhtSensor.humidity();
+  float dhtHeatIndex = computeHeatIndex(dhtTemp, dhtHumidity, false);
+
+  Serial.print("DHT Temp: ");
+  Serial.println(dhtTemp);
+
+  Serial.println("Sensing Anemometer");
+  //******************************************/
+  //* ANEMOMETOR BLOCK
+  //******************************************/
   // Delay longer if it hasn't been 30 seconds
   // Samples will count using interrupts
   long msToDelayAnemometor = ANEMOMETOR_SAMPLE_LENGTH-(millis()-lastAnemometorSamplePrint);
@@ -135,8 +184,15 @@ void loop() {
   
   int millisNow = millis();
   int numTimelyAnemometorSamples = anemometorSampleCount;
-  int anemometorRpm = numTimelyAnemometorSamples*(60.0/((millisNow-lastAnemometorSamplePrint)/1000.0));
 
+  // Rpm is *2 because there's 2 samples per revolution
+  // It needs to stay as rpm so the server can calibrate itself?
+  // Unless we output kph then we can convert to mph and have the calibration data stored on the esp8266 in this code here?
+  // int calibrationCoeficient = 0.313; // Maybe something like this?
+  // What if it's not a linear correlation?
+  // round(samples*.5*minutes)
+  int anemometorRpm = floor((numTimelyAnemometorSamples * 0.5 * (60000.0 / (millisNow-lastAnemometorSamplePrint))) + 0.5);
+  
   Serial.print(numTimelyAnemometorSamples);
   Serial.print(" Samples in last ");
   Serial.print((millisNow-lastAnemometorSamplePrint)/1000.0);
@@ -147,19 +203,11 @@ void loop() {
   anemometorSampleCount -= numTimelyAnemometorSamples;
   lastAnemometorSamplePrint = millisNow;
 
-  /* TEMPERATURE, HUMIDITY, BAROMETER BLOCK */
-  /******************************************/
-  float seaLevelPressure = 1017.2*100;
-
-  float bmpTemp = bmpSensor.readTemperature();
-  float bmpPressure = bmpSensor.readPressure();
-  float bmpAltitude = bmpSensor.readAltitude(seaLevelPressure);
-
-  float dhtTemp = dhtSensor.readTemperature();
-  float dhtHumidity = dhtSensor.readHumidity();
-  float dhtHeatIndex = dhtSensor.computeHeatIndex(dhtTemp, dhtHumidity);
-
+  //******************************************/
+  //* Battery block 
+  //******************************************/
   #if ENABLE_BATTERY_READING == true
+  Serial.println("Sensing Battery");
   digitalWrite(BATTERY_VOLTAGE_ENABLE_PIN, HIGH);
   delay(10); // Wait for the circuit to switch
   
@@ -174,7 +222,6 @@ void loop() {
   int batMinVoltage = 3700;
   int batMaxVoltage = 4400;
   
-
   //float maxReading = 997.81;
 
   //Serial.print("New Reading: ");
@@ -206,25 +253,33 @@ void loop() {
   Serial.println("%");
   
   #else
-  float batteryVoltage = ESP.getVcc()/1024.0;
+  float batteryVoltage = ESP.getVcc(); // Cause we want mV
   #endif
 
-  /* OUTPUT BLOCK */
-  analogWrite(REQUEST_LED_PIN, LED_PWM_VALUE);
+  //****************/
+  //* OUTPUT BLOCK */
+  //****************/
   analogWrite(ERROR_LED_PIN, 0);
+
+  int port = 80;
+  char ip[] = SERVER_IP_ADDRESS;
+  
+  char outputUrl[800] = "";
+  char buffer[15];
 
   strcat(outputUrl, "/report.php?");
   strcat(outputUrl, "temp=");
 
-  if (dhtTemp) {
-    strcat(outputUrl, String((bmpTemp+dhtTemp)/2).c_str());
-  } else {
+  if (dhtTemp == NAN) {
     strcat(outputUrl, String(bmpTemp).c_str());
+  } else {
+    strcat(outputUrl, String((bmpTemp+dhtTemp)/2).c_str());
+    
+    strcat(outputUrl, "&humidity=");
+    strcat(outputUrl, String(dhtHumidity).c_str());
+    strcat(outputUrl, "&heatIndex=");
+    strcat(outputUrl, String(dhtHeatIndex).c_str());
   }
-  strcat(outputUrl, "&humidity=");
-  strcat(outputUrl, String(dhtHumidity).c_str());
-  strcat(outputUrl, "&heatIndex=");
-  strcat(outputUrl, String(dhtHeatIndex).c_str());
   strcat(outputUrl, "&pressure=");
   strcat(outputUrl, String(bmpPressure).c_str());
   strcat(outputUrl, "&altitude=");
@@ -234,14 +289,18 @@ void loop() {
   strcat(outputUrl, "&windSpeed=");
   strcat(outputUrl, String(anemometorRpm).c_str());
 
-  int port = 80;
-  char ip[] = SERVER_IP_ADDRESS;
+  // Secret key for security (>_O)
+  strcat(outputUrl, "&key=frieggandham");
 
+ 
   Serial.print(ip);
   Serial.print(":");
   Serial.print(port);
   Serial.println(outputUrl);
-  
+
+  //WiFi.forceSleepWake();
+  //delayForWiFi();
+
   HTTPClient http;
   http.begin(ip, port, outputUrl); //HTTP
   int httpCode = http.GET();
@@ -254,17 +313,22 @@ void loop() {
       Serial.println(httpCode);
     }
   } else {
+    Serial.print("Http Error: ");
     Serial.println(httpCode);
     analogWrite(ERROR_LED_PIN, LED_PWM_VALUE);
   }
 
   http.end();
-  
-  analogWrite(REQUEST_LED_PIN, 0);
+
+  analogWrite(OK_LED_PIN, 0);
+
+  Serial.println("Sleeping Now");
+
 
   #if ENABLE_DEEP_SLEEP
   ESP.deepSleep(DEEP_SLEEP_LENGTH);
   #else
+  //WiFi.forceSleepBegin();
   delay(NO_SLEEP_READING_DELAY);
   #endif
 }
