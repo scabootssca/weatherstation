@@ -17,6 +17,10 @@ function output_header() {
 <html>
 <head>
 	<style type="text/css">
+	body {
+		background-color: #FBFBFB;
+	}
+
 	.canvasjs-chart-credit {
 	display: none;
 	}
