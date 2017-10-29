@@ -14,6 +14,8 @@
 
 #include <Adafruit_BMP085.h>
 
+#define DEBUG 1
+
 #define SERVER_IP_ADDRESS "192.168.1.160"
 #define LED_PWM_VALUE 300
 
@@ -24,6 +26,7 @@
 #define NO_SLEEP_READING_DELAY 60000 // 60 Seconds for delay with deep sleep disabled
 
 int okLedState = HIGH;
+unsigned long lastSenseTime = 9999999;
 
 // Pin Assignments
 #define OK_LED_PIN D8
@@ -69,6 +72,7 @@ void connectToWiFi(char* ssid, char* passwd) {
 }
 
 void delayForWiFi() {
+  
   Serial.print("Connecting to WiFi");
   
   while (WiFi.status() != WL_CONNECTED) {
@@ -102,7 +106,6 @@ void setup() {
   
   pinMode(BATTERY_PIN, INPUT);
   #endif
-
   
   //******************************
   //* Start Anemometor Counting
@@ -136,7 +139,15 @@ void setup() {
 }
 
 void loop() {
+  if (millis()-lastSenseTime < NO_SLEEP_READING_DELAY){
+    return;
+  }
+
+  lastSenseTime = millis();
+  
+  #ifdef DEBUG
   Serial.println("Starting Sensing");
+  #endif
   
   // First reset any error lights from last runs
   analogWrite(ERROR_LED_PIN, 0);
@@ -145,14 +156,18 @@ void loop() {
   //******************************************/
   //* TEMPERATURE, HUMIDITY, BAROMETER BLOCK */
   //******************************************/
+  #ifdef DEBUG
   Serial.println("Sensing BMP");
+  #endif
   float seaLevelPressure = 1017.2*100;
 
   float bmpTemp = bmpSensor.readTemperature();
   float bmpPressure = bmpSensor.readPressure();
   float bmpAltitude = bmpSensor.readAltitude(seaLevelPressure);
 
+  #ifdef DEBUG
   Serial.println("Sensing DHT22");
+  #endif
   delay(RHT_READ_INTERVAL_MS);
   int updateResult = dhtSensor.update();
 
@@ -164,10 +179,12 @@ void loop() {
   float dhtHumidity = dhtSensor.humidity();
   float dhtHeatIndex = computeHeatIndex(dhtTemp, dhtHumidity, false);
 
+  #ifdef DEBUG
   Serial.print("DHT Temp: ");
   Serial.println(dhtTemp);
 
   Serial.println("Sensing Anemometer");
+  #endif
   //******************************************/
   //* ANEMOMETOR BLOCK
   //******************************************/
@@ -192,13 +209,15 @@ void loop() {
   // What if it's not a linear correlation?
   // round(samples*.5*minutes)
   int anemometorRpm = floor((numTimelyAnemometorSamples * 0.5 * (60000.0 / (millisNow-lastAnemometorSamplePrint))) + 0.5);
-  
+
+  #ifdef DEBUG
   Serial.print(numTimelyAnemometorSamples);
   Serial.print(" Samples in last ");
   Serial.print((millisNow-lastAnemometorSamplePrint)/1000.0);
   Serial.print(" second ");
   Serial.print(anemometorRpm);
   Serial.println(" RPM");
+  #endif
 
   anemometorSampleCount -= numTimelyAnemometorSamples;
   lastAnemometorSamplePrint = millisNow;
@@ -207,7 +226,9 @@ void loop() {
   //* Battery block 
   //******************************************/
   #if ENABLE_BATTERY_READING == true
+  #ifdef DEBUG
   Serial.println("Sensing Battery");
+  #endif
   digitalWrite(BATTERY_VOLTAGE_ENABLE_PIN, HIGH);
   delay(10); // Wait for the circuit to switch
   
@@ -271,14 +292,20 @@ void loop() {
   strcat(outputUrl, "temp=");
 
   if (dhtTemp == NAN) {
+    Serial.println("DHT temp is NAN");
     strcat(outputUrl, String(bmpTemp).c_str());
   } else {
+    
     strcat(outputUrl, String((bmpTemp+dhtTemp)/2).c_str());
     
-    strcat(outputUrl, "&humidity=");
-    strcat(outputUrl, String(dhtHumidity).c_str());
-    strcat(outputUrl, "&heatIndex=");
-    strcat(outputUrl, String(dhtHeatIndex).c_str());
+    if (dhtHumidity == NAN) {
+      Serial.println("DHT humidity is NAN");
+    } else {
+      strcat(outputUrl, "&humidity=");
+      strcat(outputUrl, String(dhtHumidity).c_str());
+      strcat(outputUrl, "&heatIndex=");
+      strcat(outputUrl, String(dhtHeatIndex).c_str());
+    }
   }
   strcat(outputUrl, "&pressure=");
   strcat(outputUrl, String(bmpPressure).c_str());
@@ -322,13 +349,14 @@ void loop() {
 
   analogWrite(OK_LED_PIN, 0);
 
+  #ifdef DEBUG
   Serial.println("Sleeping Now");
-
+  #endif
 
   #if ENABLE_DEEP_SLEEP
   ESP.deepSleep(DEEP_SLEEP_LENGTH);
   #else
   //WiFi.forceSleepBegin();
-  delay(NO_SLEEP_READING_DELAY);
+  //delay(NO_SLEEP_READING_DELAY);
   #endif
 }
