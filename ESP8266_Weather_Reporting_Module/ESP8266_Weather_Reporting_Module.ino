@@ -1,362 +1,718 @@
+/*
+Copyright 2017 Jason Ryan Richards
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
 #include <Wire.h>
 #include <gpio.h>
+#include <SPI.h>
+#include "RTClib.h"
 
 // WiFi
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 
+// Required for LIGHT_SLEEP_T delay mode
+extern "C" {
+#include "user_interface.h"
+}
+
 // WiFi Variables
 #include "./login.h"
 
 // Sensor Includes
-#include "./heatIndex.h"
-#include "./SparkFun_RHT03.h"
+#include "./helpers.h"
 
-#include <Adafruit_BMP085.h>
+#include "./Adafruit_MCP23008.h"
+
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
 
 #define DEBUG 1
 
-#define SERVER_IP_ADDRESS "192.168.1.160"
-#define LED_PWM_VALUE 300
+#if DEBUG
+#define DEBUG_PRINT(...) Serial.print( __VA_ARGS__ )
+#define DEBUG_PRINTLN(...) Serial.println( __VA_ARGS__ )
+#else
+#define DEBUG_PRINT(...)
+#define DEBUG_PRINTLN(...)
+#endif
 
-#define ENABLE_BATTERY_READING false
-
+// Config
 #define ENABLE_DEEP_SLEEP false // Enable sleep, sleep length in microseconds 20e6 is 20 seconds
 #define DEEP_SLEEP_LENGTH 60e6
 #define NO_SLEEP_READING_DELAY 60000 // 60 Seconds for delay with deep sleep disabled
 
+#define MAX_READING_STORAGE 240 // How many readings to store in memory
+#define SUBMIT_MIN_READINGS 10 // How many to have before attempting to submit
+#define MAX_FAILED_SUBMITS 5
+
+#define SERVER_IP_ADDRESS "192.168.1.160"
+#define GMT_OFFSET -6
+
+// Pin Assignments
+#define OK_LED_PIN 1
+#define ERROR_LED_PIN 0
+
+#define SOLAR_ENABLE_PIN 4
+
+#define BAT_ENABLE_PIN 3
+
+#define INTERRUPT_PIN D2
+#define ADC_CS_PIN 7
+
+ADC_MODE(ADC_VCC);
+
+// Globals
+WeatherReading storedReadings[MAX_READING_STORAGE];
+int readingIndex = 0;
+short int serverDownCounter = 0;
+
 int okLedState = HIGH;
 unsigned long lastSenseTime = 9999999;
 
-// Pin Assignments
-#define OK_LED_PIN D8
-#define ERROR_LED_PIN D6
+// Real Time Clock
+RTC_DS1307 RTC;
+// IO Expander
+Adafruit_MCP23008 mcp;
 
-#define BATTERY_PIN A0
-#define BATTERY_VOLTAGE_ENABLE_PIN 10
+// Sensors
+/**********/
+// BME 280
+#define SEALEVELPRESSURE 1017.2*100
+Adafruit_BME280 bmeSensor;
+bool bmeConnected = true;
 
-// If battery is off then transmit vcc
-#if ENABLE_BATTERY_READING == false
-ADC_MODE(ADC_VCC);
-#endif
+// Anemometer
+// rpm/coef = wind speed in mph
+#define ANEMOMETER_CALIBRATION_COEF 10.2677201193868
+#define ANEMOMETER_PIN 2
+#define ANEMOMETER_SAMPLE_LENGTH NO_SLEEP_READING_DELAY//30000 // In ms
+volatile unsigned int anemometerSampleCount = 0;
+unsigned long lastAnemometerSamplePrint = 0;
 
-// Sensor Variables
-#define DHT_PIN D7
-RHT03 dhtSensor;
+// Wind Vane
+//#define WIND_VANE_ENABLE_PIN
+#define WIND_VANE_PIN 1
 
-#define ANEMOMETOR_PIN D5
-#define ANEMOMETOR_SAMPLE_LENGTH 30000 // In ms
-volatile unsigned int anemometorSampleCount = 0;
-unsigned long lastAnemometorSamplePrint = 0;
-volatile unsigned long lastAnemometorInterrupt = 0;
+// Return RSSI or 0 if target SSID not found
+int32_t getRSSI(const char* target_ssid) {
+  byte available_networks = WiFi.scanNetworks();
 
-Adafruit_BMP085 bmpSensor;
-
-void handleAnemometorInterrupt() {
-  if (millis()-lastAnemometorInterrupt > 50) {
-    lastAnemometorInterrupt = millis();
-    anemometorSampleCount++;
+  for (int network = 0; network < available_networks; network++) {
+    if (strcmp(WiFi.SSID(network).c_str(), target_ssid) == 0) {
+      return WiFi.RSSI(network);
+    }
   }
+  return 0;
 }
 
-void connectToWiFi(char* ssid, char* passwd) {
-//  WiFi.forceSleepWake();
-//  wifi_set_sleep_type(MODEM_SLEEP_T);
-//  if ((WiFi.status() != WL_CONNECTED) {
-//    WiFi.mode(WIFI_STA);
-//    WiFi.begin(ssid, password);
-//  }
-  
+bool connectToWiFi() {
+	// If we're connected then return
+	if (WiFi.status() == WL_CONNECTED) {
+    DEBUG_PRINTLN("Already Connected");
+		return true;
+	}
 
-  
-}
+  DEBUG_PRINTLN("Not Connected");
 
-void delayForWiFi() {
-  
-  Serial.print("Connecting to WiFi");
-  
+  //******************************
+  //* Init WiFi variables
+  //******************************
+  IPAddress ip(192, 168, 1, 180);
+  IPAddress gateway(192, 168, 1, 1);
+  IPAddress subnet(255, 255, 255, 0);
+
+  WiFi.forceSleepWake();
+  delay(1);
+
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_STA);
+
+  Serial.print("Connecting to: ");
+  Serial.println(WIFI_SSID);
+
+  WiFi.config(ip, gateway, subnet);
+
+  noInterrupts();
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  interrupts();
+
+  //wifi_set_sleep_type(LIGHT_SLEEP_T);
+
+  unsigned int totalWaitTime = 0;
+
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+    waitMs(500);
+    totalWaitTime += 500;
     okLedState = !okLedState;
-    analogWrite(OK_LED_PIN, okLedState ? LED_PWM_VALUE : 0);
-    Serial.print(".");
+    mcp.digitalWrite(OK_LED_PIN, okLedState ? HIGH : LOW);
+    DEBUG_PRINT(".");
+
+    // Wait 10 secs and give up
+    if (totalWaitTime > 30000) {
+      DEBUG_PRINTLN("WiFi error connecting.");
+      return false;
+    }
   }
 
   okLedState = LOW;
-  analogWrite(OK_LED_PIN, 0);
+  mcp.digitalWrite(OK_LED_PIN, LOW);
+
+	DEBUG_PRINTLN("");
+	DEBUG_PRINT("IP address: ");
+	DEBUG_PRINTLN(WiFi.localIP());
+  //DEBUG_PRINT("Strength: ");
+  //DEBUG_PRINT(getRSSI(WIFI_SSID));
+  //DEBUG_PRINTLN(" db");
+
+  return true;
+}
+
+void disconnectFromWiFi() {
+  if (WiFi.status() != WL_CONNECTED) {
+    //DEBUG_PRINTLN("Tried to disconnect while already disconnected");
+    return;
+  }
+
+  WiFi.disconnect(true);
+  WiFi.forceSleepBegin();
+  delay(1);
+}
+
+bool submit_reading(WeatherReading currentReading, bool disconnectAfterSubmission=true, bool updateClock=false) {
+  bool success = false;
+
+  char outputUrl[300] = "";
+
+  strcat(outputUrl, "/report.php?");
+
+  if (!isnan(currentReading.temperature)) {
+    strcat(outputUrl, "temp=");
+    strcat(outputUrl, String(currentReading.temperature).c_str());
+  }
+
+  if (!isnan(currentReading.humidity)) {
+      strcat(outputUrl, "&humidity=");
+      strcat(outputUrl, String(currentReading.humidity).c_str());
+
+      // If we have temperature and humidity then calculate and submit the heat index also
+      if (!isnan(currentReading.temperature)) {
+        strcat(outputUrl, "&heatIndex=");
+        strcat(outputUrl, String(computeHeatIndex(currentReading.temperature, currentReading.humidity, false)).c_str());
+      }
+  }
+
+  if (!isnan(currentReading.pressure)) {
+    strcat(outputUrl, "&pressure=");
+    strcat(outputUrl, String(currentReading.pressure).c_str());
+  }
+
+  strcat(outputUrl, "&bat=");
+  strcat(outputUrl, String(currentReading.battery).c_str());
+  strcat(outputUrl, "&windSpeed=");
+  strcat(outputUrl, String(currentReading.windSpeed).c_str());
+  strcat(outputUrl, "&windDirection=");
+  strcat(outputUrl, String(currentReading.windDirection).c_str());
+
+  strcat(outputUrl, "&timestamp=");
+  strcat(outputUrl, String(currentReading.timestamp).c_str());
+
+
+  // Secret key for security (>_O)
+  strcat(outputUrl, "&key=f6f9b0b8348a85843e951723a3060719f55985fd"); // frie!ggandham!!%2{[ sha1sum
+
+  int port = 80;
+  char ip[] = SERVER_IP_ADDRESS;
+
+  // Connect if needed
+  if (connectToWiFi()) {
+    HTTPClient http;
+
+    Serial.print(ip);
+    Serial.print(":");
+    Serial.print(port);
+    Serial.println(outputUrl);
+
+    noInterrupts();
+    http.begin(ip, port, outputUrl); //HTTP
+    interrupts();
+
+    int httpCode = http.GET();
+
+    if(httpCode > 0) {
+      if(httpCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        //Serial.println(payload);
+
+        if (payload.startsWith("S")) {
+          if (updateClock) {
+            // Get the new time
+            strtok((char*)payload.c_str(), "\n");
+            char *newTime = strtok(NULL, "\n");
+            int intTime = atoi(newTime);
+
+            Serial.print("Success! Also, setting clock to ");
+            Serial.println(newTime);
+
+            RTC.adjust(DateTime(intTime));
+          } else {
+            Serial.print("Success!");
+          }
+
+          success = true;
+        } else {
+          Serial.println("Failure: Invalid payload");
+          Serial.println(payload);
+        }
+      } else {
+        Serial.print("Http Error: ");
+        Serial.println(httpCode);
+      }
+    } else {
+      Serial.print("Http Error: ");
+      Serial.println(httpCode);
+    }
+
+    mcp.digitalWrite(ERROR_LED_PIN, success ? LOW : HIGH);
+
+    noInterrupts();
+    http.end();
+
+//    if (disconnectAfterSubmission) {
+//      disconnectFromWiFi();
+//    }
+
+    interrupts();
+  }
+
+  return success;
+}
+
+void submit_stored_readings() {
+  /*
+  /* Really need a multiple submit in here, maybe a post with temp[1],temp[2] or temp_1 whatever
+  */
+  int failedSubmissionIndexes[MAX_READING_STORAGE];
+  int failedIndex = 0;
+
+  short numConsecutiveFails = 0;
+
+  // Turn this off too
+  mcp.digitalWrite(OK_LED_PIN, LOW);
+
+  // Go through the readings and submit any that are there
+  for (int i=0; i<MAX_READING_STORAGE; i++) {
+    // Turn the light off for this now
+    mcp.digitalWrite(ERROR_LED_PIN, LOW);
+
+    // If we've reached an unpopulated reading then we've reached the end and stop
+    if (storedReadings[i].populated == false) {
+      break;
+    }
+
+    DEBUG_PRINTLN("");
+    DEBUG_PRINT(">> Submitting index: ");
+    DEBUG_PRINTLN(i);
+
+    bool success = submit_reading(storedReadings[i], false, !i);
+
+    if (!success) {
+      DEBUG_PRINTLN("Failed!, Caching for later.");
+      failedSubmissionIndexes[failedIndex++] = i;
+      numConsecutiveFails++;
+    } else {
+      numConsecutiveFails = 0;
+    }
+
+    // If the index is also the number of fails
+    // And if we've failed too many times in a row then quit
+    // The server must be down
+    if (i == numConsecutiveFails-1 && numConsecutiveFails > MAX_FAILED_SUBMITS) {
+      DEBUG_PRINT("Aborting submission, the server must be down. Counter is: ");
+      serverDownCounter = 4; // Includes 0 so 4 is don't try for 4 times and try on the 5th
+      DEBUG_PRINTLN(serverDownCounter);
+
+      return;
+    }
+
+    // Do background things between submissions
+    //yield();
+    delay(50); // Maybe this will let all go through? if we even still have them
+  }
+
+  // Iterate through the reading indexes and if it's an index less than the failed count means it's a failed one
+  // Get the associated index from the readings and copy its data over
+  for (int i=0; i<MAX_READING_STORAGE; i++) {
+    // If it is within the count of failed indexes we need to put storedReadings[failIndex[i]] at storedReadings[i]
+    if (i < failedIndex) {
+      storedReadings[i] = storedReadings[failedSubmissionIndexes[i]];
+    // Else flag it as not populated
+    } else {
+      storedReadings[i].populated = false;
+    }
+  }
+
+  // Set the current index to the index of where the failed readings stopped
+  readingIndex = failedIndex;
+
+  // If we've failed on all then set the index back to zero
+  if (readingIndex == MAX_READING_STORAGE) {
+    readingIndex = 0;
+  }
+
+  DEBUG_PRINTLN();
+  DEBUG_PRINT("New index: ");
+  DEBUG_PRINTLN(readingIndex);
+
+  disconnectFromWiFi();
+}
+
+uint16_t readSPIADC(int channel=0) {
+  // 1200000 is a good speed if we lower the pin impedance (<= ~10K ohm)
+  // 250000 because 5RC for the sample capacitor is 23K input impedance and 20pf cap
+  // So 5RC is 3.3us with RC constant of 660ns
+  // The capacitor needs to charge in at least one clock cycle so at 250k each cycle is
+  // 4us and should give enough time for the cap to charge fully
+
+  int spiHz = 500000;//1200000;//250000; /* Seems it doesn't it wants to take longer, so a slower clock */
+  SPI.beginTransaction(SPISettings(spiHz, MSBFIRST, SPI_MODE0));
+  mcp.digitalWrite(ADC_CS_PIN, LOW);
+
+  delay(1);
+
+  // Channel 0 by default
+  uint8_t cmd = 0b01101000;
+
+  // Channel 1 will do a different command
+  if (channel) {
+    cmd = 0b01111000;
+  }
+
+  // Do one read to allow a lock and stabalize
+  byte msb = SPI.transfer(cmd);
+  byte lsb = SPI.transfer(0);
+
+  uint16_t result = ((msb << 8) | lsb) & 0b0000001111111111;
+
+  // DEBUG_PRINT("Reading ADC Channel ");
+  // DEBUG_PRINT(channel);
+  // DEBUG_PRINT(": ");
+  // DEBUG_PRINTLN(result);
+
+  mcp.digitalWrite(ADC_CS_PIN, HIGH);
+  SPI.endTransaction();
+
+  return result;
+}
+
+float readBatteryVoltage() {
+  // Disable the solar panel to not interfere with the readings
+  mcp.digitalWrite(SOLAR_ENABLE_PIN, LOW);
+  delay(10);
+
+  // Switch on the voltage divider for the battery and charge the cap
+  mcp.digitalWrite(BAT_ENABLE_PIN, HIGH);
+  delay(10); // Wait a bit
+
+  // Get a reading to keep
+  int reading = readSPIADC(0);
+
+  // Vin voltage
+  int refV = 3308;//3230;
+  float dividerRatio = 1.333333334; // R2/R1 3.008/1.002   //1.3037809648;
+  float batteryVoltage = (reading * dividerRatio) * (refV / 1023.0);
+
+  // Turn the divider back off
+  mcp.digitalWrite(BAT_ENABLE_PIN, LOW);
+  delay(1);
+
+  // Turn the solar panel back on
+  mcp.digitalWrite(SOLAR_ENABLE_PIN, HIGH);
+
+  // Output
+  DEBUG_PRINT("Battery Voltage: ");
+  DEBUG_PRINTLN(batteryVoltage);
+
+  return batteryVoltage;
+}
+
+int readWindVane() {
+  float windVaneReading = readSPIADC(WIND_VANE_PIN);
+  int windDegrees = map(windVaneReading, 2, 991, 0, 360);
+
+  DEBUG_PRINT("Wind Pin Reading: ");
+  DEBUG_PRINTLN(windVaneReading);
+  DEBUG_PRINT("Wind Direction: ");
+  DEBUG_PRINT(windDegrees);
+  DEBUG_PRINTLN(" degrees");
+
+  return windDegrees;
+}
+
+void do_mcp_isr() {
+  uint8_t activeInterrupts = mcp.readInterrupts();
+
+  if (activeInterrupts>>ANEMOMETER_PIN & 1 == 1) {
+    anemometerSampleCount++;
+  }
 }
 
 void setup() {
-  Serial.begin(115200);
-  Serial.setTimeout(2000);
+  Serial.begin(9600);
+  Serial.setTimeout(500);
 
   // Wait for serial to initalize
   while (!Serial) {}
 
+  // Use D3 as SDA and D1 as SCL (GPIO0, GPIO5) respectivley
+  Wire.begin(D3, D1);
+
+  // mcp23008 begin
+  mcp.begin();      // use default address 0
+
+  // Set the interrupt pin to ACTIVE HIGH
+  mcp.setInterruptOutPinMode(MCP23008_INT_OUT_HIGH);
+
+  // Attach our handler to the interrupt trigger pin with an interrupt
+  attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), do_mcp_isr, RISING);
+
+  // SPI init
+  SPI.begin();
+  mcp.pinMode(ADC_CS_PIN, OUTPUT);
+
   // LEDs
-  pinMode(OK_LED_PIN, OUTPUT);
-  pinMode(ERROR_LED_PIN, OUTPUT);
-  analogWrite(OK_LED_PIN, LED_PWM_VALUE);
-  analogWrite(ERROR_LED_PIN, LED_PWM_VALUE);
+  mcp.pinMode(OK_LED_PIN, OUTPUT);
+  mcp.pinMode(ERROR_LED_PIN, OUTPUT);
+  mcp.digitalWrite(OK_LED_PIN, HIGH);
+  mcp.digitalWrite(ERROR_LED_PIN, HIGH);
 
-  // For battery instead of vcc reading
-  #if ENABLE_BATTERY_READING == true
-  pinMode(BATTERY_VOLTAGE_ENABLE_PIN, OUTPUT);
-  digitalWrite(BATTERY_VOLTAGE_ENABLE_PIN, LOW);
-  
-  pinMode(BATTERY_PIN, INPUT);
-  #endif
-  
-  //******************************
-  //* Start Anemometor Counting
-  //******************************
-  pinMode(ANEMOMETOR_PIN, INPUT);
-  attachInterrupt(digitalPinToInterrupt(ANEMOMETOR_PIN), handleAnemometorInterrupt, RISING);
-  anemometorSampleCount = 0;
-  lastAnemometorSamplePrint = millis();
+
+  // Clock
+  RTC.begin();
+
+  // Check to see if the RTC is keeping time.  If it is, load the time from your computer.
+  if (!RTC.isrunning()) {
+    DEBUG_PRINTLN("RTC is NOT running!");
+    // This will reflect the time that your sketch was compiled
+    RTC.adjust(DateTime(__DATE__, __TIME__));
+  }
 
   //******************************
-  //* Start BMP and DHT sensors
+  //* WiFi Enable light_sleep
   //******************************
-  bmpSensor.begin(BMP085_ULTRALOWPOWER);
-  dhtSensor.begin(DHT_PIN);
+  WiFi.mode(WIFI_OFF);
+  WiFi.forceSleepBegin();
+  delay(1);
+  //wifi_set_sleep_type(LIGHT_SLEEP_T);
 
-  //*************************
-  //* Start Wifi
-  //*************************
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+  //******************************
+  //* Enable the solar panel
+  //******************************
+  mcp.pinMode(SOLAR_ENABLE_PIN, OUTPUT);
+  mcp.digitalWrite(SOLAR_ENABLE_PIN, HIGH);
 
-  delayForWiFi();
-  
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  //******************************
+  //* Init battery reading if enabled instead of vcc reading
+  //******************************
+  mcp.pinMode(BAT_ENABLE_PIN, OUTPUT);
+  mcp.digitalWrite(BAT_ENABLE_PIN, LOW);
 
-  analogWrite(ERROR_LED_PIN, 0);
+  //******************************
+  //* Init Wind Vane
+  //******************************
+  //pinMode(WIND_VANE_ENABLE_PIN, OUTPUT);
+  //digitalWrite(WIND_VANE_ENABLE_PIN, HIGH);
+
+  //******************************
+  //* Start Anemometer Counting
+  //******************************
+  // Enable interrupt for pin 2
+  mcp.pinMode(ANEMOMETER_PIN, INPUT);
+  mcp.enableInterrupt(ANEMOMETER_PIN, RISING);
+
+  anemometerSampleCount = 0;
+  lastAnemometerSamplePrint = millis();
+
+  //******************************
+  //* Start BME sensor
+  //******************************
+  bmeConnected = bmeSensor.begin(0x76);
+  delay(100); // Wait for sensor to boot (initalize)
+
+  mcp.digitalWrite(OK_LED_PIN, LOW);
+  mcp.digitalWrite(ERROR_LED_PIN, LOW);
 }
 
 void loop() {
-  if (millis()-lastSenseTime < NO_SLEEP_READING_DELAY){
+  if (millis()-lastSenseTime < NO_SLEEP_READING_DELAY) {
     return;
   }
 
   lastSenseTime = millis();
-  
-  #ifdef DEBUG
-  Serial.println("Starting Sensing");
-  #endif
-  
-  // First reset any error lights from last runs
-  analogWrite(ERROR_LED_PIN, 0);
-  analogWrite(OK_LED_PIN, LED_PWM_VALUE);
+
+  DEBUG_PRINT("Starting Sensing on Sample Index: ");
+  DEBUG_PRINTLN(readingIndex);
+
+  // First reset any error lights from last runs then turn on the reading led
+  mcp.digitalWrite(ERROR_LED_PIN, LOW);
+  mcp.digitalWrite(OK_LED_PIN, HIGH);
 
   //******************************************/
   //* TEMPERATURE, HUMIDITY, BAROMETER BLOCK */
   //******************************************/
-  #ifdef DEBUG
-  Serial.println("Sensing BMP");
-  #endif
-  float seaLevelPressure = 1017.2*100;
+  DEBUG_PRINTLN("Sensing BME");
 
-  float bmpTemp = bmpSensor.readTemperature();
-  float bmpPressure = bmpSensor.readPressure();
-  float bmpAltitude = bmpSensor.readAltitude(seaLevelPressure);
+  float bmeTemp = NAN;
+  float bmePressure = NAN;
+  float bmeAltitude = NAN;
+  float bmeHumidity = NAN;
 
-  #ifdef DEBUG
-  Serial.println("Sensing DHT22");
-  #endif
-  delay(RHT_READ_INTERVAL_MS);
-  int updateResult = dhtSensor.update();
+  if (bmeConnected) {
+    bmeTemp = bmeSensor.readTemperature();
+    bmePressure = bmeSensor.readPressure();
+    bmeAltitude = bmeSensor.readAltitude(SEALEVELPRESSURE);
+    bmeHumidity = bmeSensor.readHumidity();
 
-  if (updateResult != 1) {
-    Serial.println("Problem reading DHT22");
+    DEBUG_PRINT("BME Temp: ");
+    DEBUG_PRINT(bmeTemp);
+    DEBUG_PRINT(" Pressure: ");
+    DEBUG_PRINT(bmePressure);
+    DEBUG_PRINT(" Humidity: ");
+    DEBUG_PRINTLN(bmeHumidity);
+  } else {
+    DEBUG_PRINTLN("BME Disconnected");
   }
-  
-  float dhtTemp = dhtSensor.tempC();
-  float dhtHumidity = dhtSensor.humidity();
-  float dhtHeatIndex = computeHeatIndex(dhtTemp, dhtHumidity, false);
 
-  #ifdef DEBUG
-  Serial.print("DHT Temp: ");
-  Serial.println(dhtTemp);
+  //******************************************/
+  //* Battery block
+  //******************************************/
+  float batteryVoltage = readBatteryVoltage();
 
-  Serial.println("Sensing Anemometer");
-  #endif
   //******************************************/
-  //* ANEMOMETOR BLOCK
+  //* WIND VANE BLOCK
   //******************************************/
+  int windDegrees = readWindVane();
+
+  //******************************************/
+  //* ANEMOMETER BLOCK
+  //******************************************/
+  DEBUG_PRINTLN("Sensing Anemometer");
+
   // Delay longer if it hasn't been 30 seconds
   // Samples will count using interrupts
-  long msToDelayAnemometor = ANEMOMETOR_SAMPLE_LENGTH-(millis()-lastAnemometorSamplePrint);
-  if (msToDelayAnemometor > 0) {
-    Serial.print("Sampling anemometor for an additional ");
-    Serial.print(msToDelayAnemometor/1000);
-    Serial.println(" seconds.");
-    
-    delay(msToDelayAnemometor);
-  }
-  
-  int millisNow = millis();
-  int numTimelyAnemometorSamples = anemometorSampleCount;
+  long msToDelayAnemometer = ANEMOMETER_SAMPLE_LENGTH-(millis()-lastAnemometerSamplePrint);
 
-  // Rpm is *2 because there's 2 samples per revolution
+  if (msToDelayAnemometer > 0) {
+    DEBUG_PRINT("Sampling anemometer for an additional ");
+    DEBUG_PRINT(msToDelayAnemometer/1000);
+    DEBUG_PRINTLN(" seconds.");
+
+    waitMs(msToDelayAnemometer);
+  }
+
+  int millisNow = millis();
+  int numTimelyAnemometerSamples = anemometerSampleCount;
+
+  // Rpm is *.5 because there's 2 samples per revolution
   // It needs to stay as rpm so the server can calibrate itself?
   // Unless we output kph then we can convert to mph and have the calibration data stored on the esp8266 in this code here?
   // int calibrationCoeficient = 0.313; // Maybe something like this?
   // What if it's not a linear correlation?
   // round(samples*.5*minutes)
-  int anemometorRpm = floor((numTimelyAnemometorSamples * 0.5 * (60000.0 / (millisNow-lastAnemometorSamplePrint))) + 0.5);
+  int anemometerRpm = floor((numTimelyAnemometerSamples * 0.5 * (60000.0 / (millisNow-lastAnemometerSamplePrint))) + 0.5);
 
-  #ifdef DEBUG
-  Serial.print(numTimelyAnemometorSamples);
-  Serial.print(" Samples in last ");
-  Serial.print((millisNow-lastAnemometorSamplePrint)/1000.0);
-  Serial.print(" second ");
-  Serial.print(anemometorRpm);
-  Serial.println(" RPM");
-  #endif
+  DEBUG_PRINT(numTimelyAnemometerSamples);
+  DEBUG_PRINT(" Samples in last ");
+  DEBUG_PRINT((millisNow-lastAnemometerSamplePrint)/1000.0);
+  DEBUG_PRINT(" second ");
+  DEBUG_PRINT(anemometerRpm);
+  DEBUG_PRINTLN(" RPM");
 
-  anemometorSampleCount -= numTimelyAnemometorSamples;
-  lastAnemometorSamplePrint = millisNow;
+  anemometerSampleCount -= numTimelyAnemometerSamples;
+  lastAnemometerSamplePrint = millisNow;
 
-  //******************************************/
-  //* Battery block 
-  //******************************************/
-  #if ENABLE_BATTERY_READING == true
-  #ifdef DEBUG
-  Serial.println("Sensing Battery");
-  #endif
-  digitalWrite(BATTERY_VOLTAGE_ENABLE_PIN, HIGH);
-  delay(10); // Wait for the circuit to switch
-  
-  analogRead(BATTERY_PIN);
-  delay(2); // For ADC to stabalize
+  //*****************/
+  //* STORAGE BLOCK */
+  //*****************/
+  // Get the block storing the reading we want to modify
+  WeatherReading *currentReading = &storedReadings[readingIndex++];
 
-  float batteryPinReading = analogRead(BATTERY_PIN);
-  
-  digitalWrite(BATTERY_VOLTAGE_ENABLE_PIN, LOW);
+  DateTime now = RTC.now();
+  currentReading->timestamp = now.unixtime();
 
-  int batteryPercent;
-  int batMinVoltage = 3700;
-  int batMaxVoltage = 4400;
-  
-  //float maxReading = 997.81;
+  // For displaying with timezone offset set to -6 CST by default for now maybe needs a define
+  now = DateTime(now + TimeSpan(60*60*GMT_OFFSET));
 
-  //Serial.print("New Reading: ");
-  //Serial.println(batteryPinReading/maxReading);
-  
-  float dividerRatio = 4.56;
+  DEBUG_PRINT("Timestamp: ");
+  DEBUG_PRINT(currentReading->timestamp, DEC);
+  DEBUG_PRINT(" ");
+  DEBUG_PRINT(now.month(), DEC);
+  DEBUG_PRINT('/');
+  DEBUG_PRINT(now.day(), DEC);
+  DEBUG_PRINT('/');
+  DEBUG_PRINT(now.year(), DEC);
+  DEBUG_PRINT(' ');
+  DEBUG_PRINT(now.hour(), DEC);
+  DEBUG_PRINT(':');
+  DEBUG_PRINT(now.minute(), DEC);
+  DEBUG_PRINT(':');
+  DEBUG_PRINT(now.second(), DEC);
+  DEBUG_PRINTLN();
 
-  int refVoltage = 4550;
-  float fullRangeMult = 1023.0 / 997.81; // Range / MaxMv out of 1V for input signal maxMv being for ref voltage
-  
-  float adcReading = (batteryPinReading * fullRangeMult);
-  float batteryVoltage = adcReading * dividerRatio;
+  currentReading->temperature = bmeTemp;
+  currentReading->humidity = bmeHumidity;
+  currentReading->pressure = bmePressure;
+  currentReading->battery = batteryVoltage;
+  currentReading->windSpeed = anemometerRpm;
+  currentReading->windDirection = windDegrees;
 
-  if (batteryVoltage <= batMinVoltage) {
-    batteryPercent = 0;
-  } else if (batteryVoltage >= batMaxVoltage) {
-    batteryPercent = 100;
-  } else {
-    batteryPercent = (batteryVoltage - batMinVoltage) * 100 / (batMaxVoltage - batMinVoltage);
+  currentReading->populated = true;
+
+  // If we've reached the last reading then goto the beginning again
+  if (readingIndex >= MAX_READING_STORAGE) {
+    readingIndex = 0;
   }
 
-  Serial.print("Pin Reading: ");
-  Serial.println(batteryPinReading);
-
-  Serial.print("Battery Voltage: ");
-  Serial.print(batteryVoltage);
-  Serial.print(" ");
-  Serial.print(batteryPercent);
-  Serial.println("%");
-  
-  #else
-  float batteryVoltage = ESP.getVcc(); // Cause we want mV
-  #endif
 
   //****************/
   //* OUTPUT BLOCK */
   //****************/
-  analogWrite(ERROR_LED_PIN, 0);
-
-  int port = 80;
-  char ip[] = SERVER_IP_ADDRESS;
-  
-  char outputUrl[800] = "";
-  char buffer[15];
-
-  strcat(outputUrl, "/report.php?");
-  strcat(outputUrl, "temp=");
-
-  if (dhtTemp == NAN) {
-    Serial.println("DHT temp is NAN");
-    strcat(outputUrl, String(bmpTemp).c_str());
-  } else {
-    
-    strcat(outputUrl, String((bmpTemp+dhtTemp)/2).c_str());
-    
-    if (dhtHumidity == NAN) {
-      Serial.println("DHT humidity is NAN");
-    } else {
-      strcat(outputUrl, "&humidity=");
-      strcat(outputUrl, String(dhtHumidity).c_str());
-      strcat(outputUrl, "&heatIndex=");
-      strcat(outputUrl, String(dhtHeatIndex).c_str());
-    }
-  }
-  strcat(outputUrl, "&pressure=");
-  strcat(outputUrl, String(bmpPressure).c_str());
-  strcat(outputUrl, "&altitude=");
-  strcat(outputUrl, String(bmpAltitude).c_str());
-  strcat(outputUrl, "&bat=");
-  strcat(outputUrl, String(batteryVoltage).c_str());
-  strcat(outputUrl, "&windSpeed=");
-  strcat(outputUrl, String(anemometorRpm).c_str());
-
-  // Secret key for security (>_O)
-  strcat(outputUrl, "&key=frieggandham");
-
- 
-  Serial.print(ip);
-  Serial.print(":");
-  Serial.print(port);
-  Serial.println(outputUrl);
-
-  //WiFi.forceSleepWake();
-  //delayForWiFi();
-
-  HTTPClient http;
-  http.begin(ip, port, outputUrl); //HTTP
-  int httpCode = http.GET();
-
-  if(httpCode > 0) {
-    if(httpCode == HTTP_CODE_OK) {
-      String payload = http.getString();
-      Serial.println(payload);
-    } else {
-      Serial.println(httpCode);
-    }
-  } else {
-    Serial.print("Http Error: ");
-    Serial.println(httpCode);
-    analogWrite(ERROR_LED_PIN, LED_PWM_VALUE);
+  // Count the attemts to wait at least serverDownCounter attempts before submitting again
+  if (serverDownCounter > 0) {
+    serverDownCounter--;
+    DEBUG_PRINT("Server down counter is now: ");
+    DEBUG_PRINTLN(serverDownCounter);
+  // All good then submit
+  } else if (readingIndex == 0 || readingIndex >= SUBMIT_MIN_READINGS) {
+    DEBUG_PRINT("Starting Submitting Readings");
+    submit_stored_readings();
   }
 
-  http.end();
 
-  analogWrite(OK_LED_PIN, 0);
+  ///////
+  // Done now
+  mcp.digitalWrite(OK_LED_PIN, LOW);
+  mcp.digitalWrite(ERROR_LED_PIN, LOW);
 
-  #ifdef DEBUG
-  Serial.println("Sleeping Now");
-  #endif
+  DEBUG_PRINT("Free Heap: ");
+  DEBUG_PRINTLN(ESP.getFreeHeap(), DEC);
+  DEBUG_PRINTLN("Sleeping Now");
+  DEBUG_PRINTLN();
 
   #if ENABLE_DEEP_SLEEP
   ESP.deepSleep(DEEP_SLEEP_LENGTH);
   #else
-  //WiFi.forceSleepBegin();
-  //delay(NO_SLEEP_READING_DELAY);
+  waitMs(NO_SLEEP_READING_DELAY);
   #endif
 }
