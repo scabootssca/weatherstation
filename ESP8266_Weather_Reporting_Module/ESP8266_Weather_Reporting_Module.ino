@@ -89,17 +89,18 @@ Adafruit_MCP23008 mcp;
 // Sensors
 /**********/
 // BME 280
-#define SEALEVELPRESSURE 1017.2*100
 Adafruit_BME280 bmeSensor;
 bool bmeConnected = true;
 
 // Anemometer
 // rpm/coef = wind speed in mph
-#define ANEMOMETER_CALIBRATION_COEF 10.2677201193868
+// 10.2677201193868 = samples per 1mph
+// Reciperical of it is 0.09739260404185239
+#define ANEMOMETER_CALIBRATION_COEF 0.09739260404185239
 #define ANEMOMETER_PIN 2
 #define ANEMOMETER_SAMPLE_LENGTH NO_SLEEP_READING_DELAY//30000 // In ms
 volatile unsigned int anemometerSampleCount = 0;
-unsigned long lastAnemometerSamplePrint = 0;
+unsigned long lastAnemometerReadingMillis = 0;
 
 // Wind Vane
 //#define WIND_VANE_ENABLE_PIN
@@ -448,10 +449,48 @@ int readWindVane() {
   return windDegrees;
 }
 
-void do_mcp_isr() {
-  uint8_t activeInterrupts = mcp.readInterrupts();
+float readAnemometer() {
+	DEBUG_PRINTLN("Sensing Anemometer");
 
-  if (activeInterrupts>>ANEMOMETER_PIN & 1 == 1) {
+  // Delay longer if it hasn't been ANEMOMETER_SAMPLE_LENGTH seconds
+  // Samples will count using interrupts
+  long msToDelayAnemometer = ANEMOMETER_SAMPLE_LENGTH-(millis()-lastAnemometerReadingMillis);
+
+  if (msToDelayAnemometer > 0) {
+    DEBUG_PRINT("Sampling anemometer for an additional ");
+    DEBUG_PRINT(msToDelayAnemometer/1000);
+    DEBUG_PRINTLN(" seconds.");
+
+    waitMs(msToDelayAnemometer);
+  }
+
+  int millisNow = millis();
+
+  // Get how many samples we had
+  noInterrupts();
+  int numTimelyAnemometerSamples = anemometerSampleCount;
+  anemometerSampleCount = 0;
+  interrupts();
+
+	// mph = revolutions * measurementDuration * calibrationData
+	float anemometerMph = (numTimelyAnemometerSamples * 0.5) * (60000.0 / (millisNow-lastAnemometerReadingMillis)) * ANEMOMETER_CALIBRATION_COEF;
+
+  DEBUG_PRINT(numTimelyAnemometerSamples);
+  DEBUG_PRINT(" Samples in last ");
+  DEBUG_PRINT((millisNow-lastAnemometerReadingMillis)/1000.0);
+  DEBUG_PRINT(" second ");
+  DEBUG_PRINT(anemometerMph);
+  DEBUG_PRINTLN(" MPH");
+
+  lastAnemometerReadingMillis = millisNow;
+
+	return anemometerMph;
+}
+
+void ICACHE_RAM_ATTR do_mcp_isr() {
+  //uint8_t activeInterrupts = mcp.readInterrupts();
+
+  if (mcp.interruptOn(ANEMOMETER_PIN)) {//(activeInterrupts>>ANEMOMETER_PIN & 1 == 1) {
     anemometerSampleCount++;
   }
 }
@@ -472,8 +511,8 @@ void setup() {
   // Set the interrupt pin to ACTIVE HIGH
   mcp.setInterruptOutPinMode(MCP23008_INT_OUT_HIGH);
 
-  // Attach our handler to the interrupt trigger pin with an interrupt
-  attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), do_mcp_isr, RISING);
+	// Attach our handler to the interrupt trigger pin with an interrupt
+	attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), do_mcp_isr, RISING);
 
   // SPI init
   SPI.begin();
@@ -482,9 +521,10 @@ void setup() {
   // LEDs
   mcp.pinMode(OK_LED_PIN, OUTPUT);
   mcp.pinMode(ERROR_LED_PIN, OUTPUT);
+
+	// Turn them on for init
   mcp.digitalWrite(OK_LED_PIN, HIGH);
   mcp.digitalWrite(ERROR_LED_PIN, HIGH);
-
 
   // Clock
   RTC.begin();
@@ -595,40 +635,7 @@ void loop() {
   //******************************************/
   //* ANEMOMETER BLOCK
   //******************************************/
-  DEBUG_PRINTLN("Sensing Anemometer");
-
-  // Delay longer if it hasn't been 30 seconds
-  // Samples will count using interrupts
-  long msToDelayAnemometer = ANEMOMETER_SAMPLE_LENGTH-(millis()-lastAnemometerSamplePrint);
-
-  if (msToDelayAnemometer > 0) {
-    DEBUG_PRINT("Sampling anemometer for an additional ");
-    DEBUG_PRINT(msToDelayAnemometer/1000);
-    DEBUG_PRINTLN(" seconds.");
-
-    waitMs(msToDelayAnemometer);
-  }
-
-  int millisNow = millis();
-  int numTimelyAnemometerSamples = anemometerSampleCount;
-
-  // Rpm is *.5 because there's 2 samples per revolution
-  // It needs to stay as rpm so the server can calibrate itself?
-  // Unless we output kph then we can convert to mph and have the calibration data stored on the esp8266 in this code here?
-  // int calibrationCoeficient = 0.313; // Maybe something like this?
-  // What if it's not a linear correlation?
-  // round(samples*.5*minutes)
-  int anemometerRpm = floor((numTimelyAnemometerSamples * 0.5 * (60000.0 / (millisNow-lastAnemometerSamplePrint))) + 0.5);
-
-  DEBUG_PRINT(numTimelyAnemometerSamples);
-  DEBUG_PRINT(" Samples in last ");
-  DEBUG_PRINT((millisNow-lastAnemometerSamplePrint)/1000.0);
-  DEBUG_PRINT(" second ");
-  DEBUG_PRINT(anemometerRpm);
-  DEBUG_PRINTLN(" RPM");
-
-  anemometerSampleCount -= numTimelyAnemometerSamples;
-  lastAnemometerSamplePrint = millisNow;
+  float anemometerMph = readAnemometer();
 
   //*****************/
   //* STORAGE BLOCK */
@@ -662,7 +669,7 @@ void loop() {
   currentReading->humidity = bmeHumidity;
   currentReading->pressure = bmePressure;
   currentReading->battery = batteryVoltage;
-  currentReading->windSpeed = anemometerRpm;
+  currentReading->windSpeed = anemometerMph;
   currentReading->windDirection = windDegrees;
 
   currentReading->populated = true;
