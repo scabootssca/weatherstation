@@ -29,13 +29,14 @@ public:
 
   // Interrupt functions
   void setInterruptOutPinMode(uint8_t mode);
+  bool ICACHE_RAM_ATTR interruptOn(uint8_t pin);
   uint8_t readInterrupts();
   void enableInterrupt(uint8_t pin, int mode=CHANGE);
   void disableInterrupt(uint8_t pin);
 
  private:
   uint8_t i2caddr;
-  uint8_t read8(uint8_t addr);
+  uint8_t ICACHE_RAM_ATTR read8(uint8_t addr);
   void write8(uint8_t addr, uint8_t data);
 
   uint8_t interruptHandlers[8];

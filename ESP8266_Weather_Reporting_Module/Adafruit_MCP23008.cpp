@@ -258,7 +258,7 @@ void Adafruit_MCP23008::disableInterrupt(uint8_t pin) {
   write8(MCP23008_GPINTEN, registerVal);
 }
 
-uint8_t Adafruit_MCP23008::read8(uint8_t addr) {
+uint8_t ICACHE_RAM_ATTR Adafruit_MCP23008::read8(uint8_t addr) {
   Wire.beginTransmission(MCP23008_ADDRESS | i2caddr);
 #if ARDUINO >= 100
   Wire.write((byte)addr);
