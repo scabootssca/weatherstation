@@ -362,10 +362,15 @@ void submit_stored_readings() {
 
   // Iterate through the reading indexes and if it's an index less than the failed count means it's a failed one
   // Get the associated index from the readings and copy its data over
+  /* I think this is just changing the reference maybe ? */
   for (int i=0; i<MAX_READING_STORAGE; i++) {
     // If it is within the count of failed indexes we need to put storedReadings[failIndex[i]] at storedReadings[i]
     if (i < failedIndex) {
-      storedReadings[i] = storedReadings[failedSubmissionIndexes[i]];
+      //copyWeatherReading(source, dest);
+      //storedReadings[i] = storedReadings[failedSubmissionIndexes[i]];
+      //^Was like that before but after the server being down for a while when it finally came back up the esp only submitted the last few readings or random ones
+      // No idea why should work according to tests on my desk. Maybe was passing reference so they got overwritten?
+      copyWeatherReading(storedReadings[failedSubmissionIndexes[i]], storedReadings[i]);
     // Else flag it as not populated
     } else {
       storedReadings[i].populated = false;
