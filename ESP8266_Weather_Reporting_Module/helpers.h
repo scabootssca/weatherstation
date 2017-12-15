@@ -23,6 +23,18 @@ struct WeatherReading {
 //   return 0;
 // }
 
+
+void copyWeatherReading(WeatherReading src, WeatherReading dest) {
+	dest.timestamp = src.timestamp;
+	dest.temperature = src.temperature;
+	dest.humidity = src.humidity;
+	dest.pressure = src.pressure;
+	dest.battery = src.battery;
+	dest.windSpeed = src.windSpeed;
+	dest.windDirection = src.windDirection;
+	dest.populated = src.populated;
+}
+
 void waitMs(int delayMs) {
   delay(delayMs);
   return;
