@@ -425,22 +425,34 @@ uint16_t readSPIADC(int channel=0) {
   return result;
 }
 
+float readSPIADCVoltage(int channel=0, float ratio=1.0) {
+  int refMv = ESP.getVcc() * 1.1725; // Cause internally is connected to ground apparently 1.1?
+  int reading = readSPIADC(channel);
+  float resultMv = (refMv / 1023.0) * (reading * ratio);
+
+  Serial.print("refMv: ");
+  Serial.println(refMv);
+  Serial.print("reading: ");
+  Serial.println(reading);
+  Serial.print("resultMv: ");
+  Serial.println(resultMv);
+
+  return resultMv;
+}
+
 float readBatteryVoltage() {
+  float dividerRatio = 1.33511348465;//1.333333334; // R2/R1 3.008/1.002
+
   // Disable the solar panel to not interfere with the readings
   mcp.digitalWrite(SOLAR_ENABLE_PIN, LOW);
-  delay(10);
+  delay(50);
 
   // Switch on the voltage divider for the battery and charge the cap
   mcp.digitalWrite(BAT_ENABLE_PIN, HIGH);
-  delay(10); // Wait a bit
+  delay(50); // Wait a bit
 
-  // Get a reading to keep
-  int reading = readSPIADC(0);
-
-  // Vin voltage
-  int refV = 3308;//3230;
-  float dividerRatio = 1.333333334; // R2/R1 3.008/1.002   //1.3037809648;
-  float batteryVoltage = (reading * dividerRatio) * (refV / 1023.0);
+  // Voltage afterwards
+  float batteryVoltage = readSPIADCVoltage(0, dividerRatio);
 
   // Turn the divider back off
   mcp.digitalWrite(BAT_ENABLE_PIN, LOW);
