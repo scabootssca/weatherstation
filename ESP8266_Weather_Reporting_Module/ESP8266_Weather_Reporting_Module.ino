@@ -570,13 +570,22 @@ void setup() {
   mcp.enableInterrupt(ANEMOMETER_PIN, RISING);
 
   anemometerSampleCount = 0;
-  lastAnemometerSamplePrint = millis();
+  lastAnemometerReadingMillis = millis();
 
   //******************************
   //* Start BME sensor
   //******************************
   bmeConnected = bmeSensor.begin(0x76);
-  delay(100); // Wait for sensor to boot (initalize)
+
+	// Then set it to forced so we sleep
+	bmeSensor.setSampling(
+		bmeSensor.MODE_FORCED,
+		bmeSensor.SAMPLING_X16,
+		bmeSensor.SAMPLING_X16,
+		bmeSensor.SAMPLING_X16,
+		bmeSensor.FILTER_OFF,
+		bmeSensor.STANDBY_MS_0_5
+	);
 
   mcp.digitalWrite(OK_LED_PIN, LOW);
   mcp.digitalWrite(ERROR_LED_PIN, LOW);
@@ -603,13 +612,13 @@ void loop() {
 
   float bmeTemp = NAN;
   float bmePressure = NAN;
-  float bmeAltitude = NAN;
   float bmeHumidity = NAN;
 
   if (bmeConnected) {
+		// Need this cause we'll be sleeping all the other time
+		bmeSensor.takeForcedMeasurement();
     bmeTemp = bmeSensor.readTemperature();
     bmePressure = bmeSensor.readPressure();
-    bmeAltitude = bmeSensor.readAltitude(SEALEVELPRESSURE);
     bmeHumidity = bmeSensor.readHumidity();
 
     DEBUG_PRINT("BME Temp: ");
