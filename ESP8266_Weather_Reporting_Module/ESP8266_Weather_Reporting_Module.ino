@@ -53,11 +53,15 @@ extern "C" {
 #define DEEP_SLEEP_LENGTH 60e6
 #define NO_SLEEP_READING_DELAY 60000 // 60 Seconds for delay with deep sleep disabled
 
-#define MAX_READING_STORAGE 240 // How many readings to store in memory
-#define SUBMIT_MIN_READINGS 10 // How many to have before attempting to submit
-#define MAX_FAILED_SUBMITS 5
+#define MAX_READING_STORAGE 420 // How many readings to store in memory
+#define READING_SUBMIT_INTERVAL 10 // How many to have before attempting to submit
+#define MAX_FAILED_SUBMITS 3
 
 #define SERVER_IP_ADDRESS "192.168.1.160"
+#define MY_IP 192, 168, 1, 180
+#define GATEWAY_IP 192, 168, 1, 1
+#define SUBNET_MASK 255, 255, 255, 0
+
 #define GMT_OFFSET -6
 
 // Pin Assignments
@@ -77,6 +81,7 @@ ADC_MODE(ADC_VCC);
 WeatherReading storedReadings[MAX_READING_STORAGE];
 int readingIndex = 0;
 short int serverDownCounter = 0;
+
 
 int okLedState = HIGH;
 unsigned long lastSenseTime = 9999999;
@@ -118,20 +123,20 @@ bool connectToWiFi() {
   //******************************
   //* Init WiFi variables
   //******************************
-  IPAddress ip(192, 168, 1, 180);
-  IPAddress gateway(192, 168, 1, 1);
-  IPAddress subnet(255, 255, 255, 0);
+  //IPAddress ip(MY_IP);
+  //IPAddress gateway(GATEWAY_IP);
+  //IPAddress subnet(SUBNET_MASK);
 
   WiFi.forceSleepWake();
   delay(1);
 
-  WiFi.persistent(false);
-  WiFi.mode(WIFI_STA);
+  //WiFi.persistent(false);
+  //WiFi.mode(WIFI_STA);
 
   Serial.print("Connecting to: ");
   Serial.println(WIFI_SSID);
 
-  WiFi.config(ip, gateway, subnet);
+  //WiFi.config(ip, gateway, subnet);
 
   noInterrupts();
   WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -174,9 +179,14 @@ void disconnectFromWiFi() {
     return;
   }
 
-  WiFi.disconnect(true);
+  noInterrupts();
+  bool disconnected = WiFi.disconnect();
   WiFi.forceSleepBegin();
   delay(1);
+  interrupts();
+
+  DEBUG_PRINT("Disconnected from wifi: ");
+  DEBUG_PRINTLN(disconnected);
 }
 
 bool submit_reading(WeatherReading currentReading, bool disconnectAfterSubmission=true, bool updateClock=false) {
@@ -237,12 +247,21 @@ bool submit_reading(WeatherReading currentReading, bool disconnectAfterSubmissio
     http.begin(ip, port, outputUrl); //HTTP
     interrupts();
 
+    Serial.println("Success with http.begin");
+
+    noInterrupts();
     int httpCode = http.GET();
+    interrupts();
+
+    Serial.print("Got http code: ");
+    Serial.println(httpCode);
 
     if(httpCode > 0) {
       if(httpCode == HTTP_CODE_OK) {
         String payload = http.getString();
-        //Serial.println(payload);
+
+        Serial.print("Got payload: ");
+        Serial.println(payload);
 
         if (payload.startsWith("S")) {
           if (updateClock) {
@@ -329,9 +348,10 @@ void submit_stored_readings() {
     // The server must be down
     if (i == numConsecutiveFails-1 && numConsecutiveFails > MAX_FAILED_SUBMITS) {
       DEBUG_PRINT("Aborting submission, the server must be down. Counter is: ");
-      serverDownCounter = 4; // Includes 0 so 4 is don't try for 4 times and try on the 5th
+      serverDownCounter = READING_SUBMIT_INTERVAL; // Includes 0 so 4 is don't try for 4 times and try on the 5th
       DEBUG_PRINTLN(serverDownCounter);
 
+      disconnectFromWiFi();
       return;
     }
 
@@ -539,9 +559,18 @@ void setup() {
   //******************************
   //* WiFi Enable light_sleep
   //******************************
-  WiFi.mode(WIFI_OFF);
-  WiFi.forceSleepBegin();
-  delay(1);
+	IPAddress ip(MY_IP);
+  IPAddress gateway(GATEWAY_IP);
+  IPAddress subnet(SUBNET_MASK);
+
+	WiFi.persistent(false); // Don't store info to flash
+	WiFi.config(ip, gateway, subnet);
+	WiFi.mode(WIFI_STA); // Station mode not AP
+
+	WiFi.forceSleepBegin();
+  //WiFi.mode(WIFI_OFF);
+  //WiFi.forceSleepBegin();
+  //delay(1);
   //wifi_set_sleep_type(LIGHT_SLEEP_T);
 
   //******************************
