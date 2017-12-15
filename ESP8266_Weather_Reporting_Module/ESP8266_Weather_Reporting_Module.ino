@@ -57,11 +57,6 @@ extern "C" {
 #define READING_SUBMIT_INTERVAL 10 // How many to have before attempting to submit
 #define MAX_FAILED_SUBMITS 3
 
-#define SERVER_IP_ADDRESS "192.168.1.160"
-#define MY_IP 192, 168, 1, 180
-#define GATEWAY_IP 192, 168, 1, 1
-#define SUBNET_MASK 255, 255, 255, 0
-
 #define GMT_OFFSET -6
 
 // Pin Assignments
