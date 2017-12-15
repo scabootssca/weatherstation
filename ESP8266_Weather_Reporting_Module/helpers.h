@@ -10,9 +10,23 @@ struct WeatherReading {
   bool populated = false;
 };
 
+
+// // Return RSSI or 0 if target SSID not found
+// int32_t getRSSI(const char* target_ssid) {
+//   byte available_networks = WiFi.scanNetworks();
+//
+//   for (int network = 0; network < available_networks; network++) {
+//     if (strcmp(WiFi.SSID(network).c_str(), target_ssid) == 0) {
+//       return WiFi.RSSI(network);
+//     }
+//   }
+//   return 0;
+// }
+
 void waitMs(int delayMs) {
   delay(delayMs);
   return;
+
 	int startTime = millis();
 
 	while (millis()-startTime < delayMs)
