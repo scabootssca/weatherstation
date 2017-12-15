@@ -399,7 +399,7 @@ uint16_t readSPIADC(int channel=0) {
   // The capacitor needs to charge in at least one clock cycle so at 250k each cycle is
   // 4us and should give enough time for the cap to charge fully
 
-  int spiHz = 500000;//1200000;//250000; /* Seems it doesn't it wants to take longer, so a slower clock */
+  int spiHz = 900000;//1200000;//250000; /* Seems it doesn't it wants to take longer, so a slower clock */
   SPI.beginTransaction(SPISettings(spiHz, MSBFIRST, SPI_MODE0));
   mcp.digitalWrite(ADC_CS_PIN, LOW);
 
