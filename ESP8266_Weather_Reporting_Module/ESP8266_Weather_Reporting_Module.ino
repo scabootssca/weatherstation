@@ -743,8 +743,10 @@ void loop() {
     serverDownCounter--;
     DEBUG_PRINT("Server down counter is now: ");
     DEBUG_PRINTLN(serverDownCounter);
-  // All good then submit
-  } else if (readingIndex == 0 || readingIndex >= SUBMIT_MIN_READINGS) {
+  // All good then submit every READING_SUBMIT_INTERVAL
+	}
+
+	if (!serverDownCounter && readingIndex >= READING_SUBMIT_INTERVAL) {
     DEBUG_PRINT("Starting Submitting Readings");
     submit_stored_readings();
   }
