@@ -169,6 +169,24 @@ void Adafruit_MCP23008::setInterruptOutPinMode(uint8_t mode) {
   write8(MCP23008_IOCON, registerVal);
 }
 
+bool ICACHE_RAM_ATTR Adafruit_MCP23008::interruptOn(uint8_t pin) {
+  // activeInterruptPins if this pins pos in the active interrupt is false then it's not us
+  if ((read8(MCP23008_INTF) >> pin) & 1 == 0) {
+    return false;
+  }
+
+  uint8_t pinInterruptType = (read8(MCP23008_INTCAP) >> pin) & 1;
+
+  switch (this->interruptHandlers[pin]) {
+    case RISING:
+      return pinInterruptType == 1;
+    case FALLING:
+      return pinInterruptType == 0;
+    case CHANGE:
+      return true;
+    }
+}
+
 uint8_t Adafruit_MCP23008::readInterrupts() {
   // Read which pins are active
   // intf is a mask of pins with pending interrupts
