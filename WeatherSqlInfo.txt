@@ -1,2 +1,0 @@
-User: weather_station
-Pass: !@!cats_and!dogsITISRAININGTHEM~
