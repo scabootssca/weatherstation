@@ -27,8 +27,8 @@ extern "C" {
 #include "user_interface.h"
 }
 
-// WiFi Variables
-#include "./login.h"
+// WiFi and Network Variables and GMT offset
+#include "./config.h"
 
 // Sensor Includes
 #include "./helpers.h"
