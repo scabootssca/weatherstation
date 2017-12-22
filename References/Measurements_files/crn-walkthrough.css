@@ -1,0 +1,20 @@
+#walkthrough {
+list-style: none;
+float: right;
+border-left: solid 1px #CCCCCC;
+border-right: solid 1px #CCCCCC;
+border-top: solid 1px #CCCCCC;
+}
+#walkthrough li {
+padding-right: .5em;
+padding-left: .5em;
+border-bottom: solid 1px #CCCCCC;
+text-align: right;
+text-transform: uppercase;
+}
+#walkthrough .current {
+font-weight: bold;
+background-image: url("/crn/theme/icons/arrow_collapsed.png");
+background-repeat: no-repeat;
+background-position: center left;
+}

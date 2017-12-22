@@ -1,0 +1,62 @@
+/* menus.css                                           */
+/* Master CSS for all different styles of menus        */
+
+/* Default Blue Menu */
+#content ul.navMenu {
+	margin:0 0 1em 0 !important;
+	padding:0;
+	width:100%;
+	float:left;
+	background-color:#194E81
+}
+
+#content ul.navMenu li {
+	margin:0;
+	padding:0;
+	list-style-type:none;
+	list-position:inside
+}
+
+#content ul.navMenu li a {
+	color:#fff;
+	padding:2px 5px;
+	display:block
+}
+
+#content ul.navMenu li a.selected,
+#content ul.navMenu li a.active {
+	cursor:default;
+	text-decoration:none;
+	background-color:#082F54;
+}
+
+#content ul.navMenu li a.selected:hover,
+#content ul.navMenu li a.active:hover {
+	text-decoration:none;
+	background-color:#082F54;
+}
+
+#content ul.navMenu li a:hover {
+	text-decoration:underline
+}
+
+
+/* Menu Theme #2: White */
+#content ul.navMenu.white {
+	background-color:#fff
+}
+
+#content ul.navMenu.white li a {
+	color:#0057a5
+}
+
+
+
+/* Menu Theme #2: Lt Gray */
+#content ul.navMenu.ltgray {
+	background-color:#EFEFEF
+}
+
+#content ul.navMenu.ltgray li a {
+	color:#444
+}

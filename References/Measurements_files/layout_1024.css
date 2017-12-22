@@ -1,0 +1,134 @@
+#main{min-width:1024px;overflow-x:auto;overflow-y:auto}
+#header .inset, #nav .inset, #breadcrumbs .inset, #footer .inset, #content .inset, header .formerly .inset {width:1000px}
+#header {height:100px}
+#header a {font-size:1.8em}
+
+#header .inset {
+	width:1000px;
+	min-width:1000px;
+	height:90px
+}
+
+#header .inset .noaalink {
+	display:block;
+	float:left;
+	height:66px;
+	width:238px;
+	margin:13px 0 0 0;
+	padding:0;
+	position:relative;
+	background:url('/shared/v1/images/logos/logo_noaa.png') center center no-repeat #fff
+}
+
+#header .inset .title {
+	float:left;
+	width:401px;
+	height:66px;
+	margin:13px 0 0 0;
+	overflow:hidden;
+	padding:0;
+	position:relative
+}
+
+#header .inset .title span {
+	background:url('/shared/v1/images/logos/logo_ncei.png') no-repeat top left #fff;
+	width:401px;
+	height:66px;
+	display:block;
+	position:absolute;
+	left:0;
+	top:0;
+	z-index:10
+}
+
+#header #headDOC {
+	float:right;
+	width:60px;
+	height:61px;
+	margin-top:15px;
+	background:url('/shared/v1/images/logos/logo_doc.png') center center no-repeat transparent
+}
+
+.mainNav {float:left}
+.navSearchForm {float:right}
+#nav #sitesearch {width:240px;height:25px}
+#nav li {line-height:1.1em}
+#content{_height:550px;min-height:550px}
+#content h1 {margin-top:.5em}
+#content .helpBox {width:360px;float:right;margin:0 0 1.5em 0}
+#content .col-2-left-600 {float:left;width:600px;margin:0 0 10px 0;_height:800px;min-height:800px}
+#footer .subfooter{border-right:1px solid #ccc;float:left;line-height:25px;margin:10px 40px 0 0;width:300px}
+#footer .menu {float:left;text-align:left;margin-right:20px;width:190px}
+#footer .menu li {line-height:1.835em;list-style-image:url('/shared/v1/images/bullet_red.png');margin:0;padding:0}
+#footer #footerCrumbs {margin:20px 10px 10px 10px;padding:5px 10px}
+
+/* Columnar layouts */
+.grid-row {
+	width: 100%;
+	float: left;
+	clear: both
+}
+
+/* 600 / 400 */
+.col-2-left-600 {
+	width: 600px;
+	float: left
+}
+
+.col-2-right-400 {
+	width:400px;
+	float:right
+}
+
+/* 300 / 700 */
+.col-2-left-300 {
+	float: left;
+	width: 280px;
+	margin-right:20px
+}
+
+.col-2-right-700 {
+	float:right;
+	width:700px
+}
+
+/* 500 / 500 */
+.col-2-left-500,
+.col-2-right-500 {
+	width: 500px;
+	float: left
+}
+
+
+/* 300 / 700 */
+.col-2-left-700 {
+	float:left;
+	width:700px
+}
+.col-2-right-300 {
+	float: right;
+	width: 280px;
+	margin-left:20px
+}
+
+/* Golden Ratio: 620 / 380 */
+.col-2-left-620 {
+	float:left;
+	width:600px;
+}
+.col-2-right-380 {
+	float: right;
+	width: 380px;
+}
+
+
+/* Golden Ratio: 620 / 380 */
+.col-2-left-380 {
+	float:left;
+	width:380px;
+	
+}
+.col-2-right-620 {
+	float: right;
+	width: 600px;
+}

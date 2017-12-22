@@ -1,0 +1,180 @@
+h1{font-size:1em;margin-top:1em}
+h2{font-size:1.2em}
+h3{font-size:1em}
+#header .inset, #nav .inset, #breadcrumbs .inset, #subnav .inset, #footer .inset, header .formerly .inset {width:100%;margin:0 10px;padding:0}
+#content .inset {width:90%;margin:0 auto}
+#header {height:40px;width:100%}
+#header a {font-size:1.4em}
+#header .inset {background:none;width:280px}
+#header .inset .noaalink {
+	float:left;
+	display:block;
+	margin:7px 0 0 0;
+	padding:0;
+	position:relative;
+	width:105px;
+	height:28px;
+	background:url('/shared/v1/images/logos/noaa_logo_320.png') center center no-repeat #fff
+}
+#header .inset .title {
+	float:left;
+	width:152px;
+	height:28px;
+	margin:7px 0 0 0;
+	overflow:hidden;
+	padding:0;
+	position:relative
+}
+#header .inset .title span {
+	background:url('/shared/v1/images/logos/logo_ncei_320.png') top left no-repeat #fff;
+	width:152px;
+	height:25px;
+	display:block;
+	position:absolute;
+	left:0;
+	top:3px;
+	z-index:20;
+	font-size:1.2em
+}
+#header #headDOC {display:none;width:0;height:0}
+#nav {font-size:.75em;padding:0 0 3px 0}
+#nav .inset {margin:0}
+#nav ul {margin-right:0;float:none}
+#nav ul.mainNav {float:none}
+#nav ul.mainNav li {float:none;width:100%;clear:both;text-align:center;font-weight:bold;background-color:#194E81;border-bottom:1px solid #00A2E3;font-size:14px}
+#nav ul.mainNav li:hover {background-color:#4C87C0}
+#nav ul.mainNav li a {color:#fff;padding:10px;display:block}
+#nav .navSearchForm {float:none;width:278px;text-align:center;display:block;margin:2px auto 0 auto;font-size:14px}
+#nav #sitesearch {width:245px;height:24px}
+#nav .submitbutton {width:26px;height:26px}
+#nav .inset {width:100%}
+#subnav {font-size:.75em;padding:0 0 3px 0}
+#subnav .inset {width:100%;padding:0;margin:0;}
+#subnav ul {float:none;margin:0;padding:0;border-top:1px solid #00A2E3;}
+#subnav ul li {display:block;width:100%;clear:both;text-align:center;font-weight:bold;background-color:#082F54;font-size:14px;list-position:inside}
+#subnav ul li a {color:#fff;padding:10px;display:block}
+#breadcrumbs {display:none;visibility:hidden}
+#content {margin-bottom:0;font-size:.8em;padding:0}
+.helpBox {width:100% !important;margin:1.5em 0 !important;float:none !important;clear:both !important}
+#footer {position:relative;height:auto} /* fix for small screens */
+#footer .inset {margin:0;padding:0}
+#footer .inset .subfooter {float:none;border:none;border-bottom:none;margin:0 auto;width:100%}
+#footer .inset .subfooter img {margin:0 5px}
+#footer .inset ul.menu, #footer #footerCrumbs, #headDOC, #footer #footerCrumbs {display:none}
+#cartWidgetPreview {width:240px}
+
+#content .col-2-left-600 {float:none;width:100%}
+
+/* Columnar layouts */
+.grid-row {
+	width: 100%;
+	float: left;
+	clear: both;
+}
+
+/* 600 / 400 */
+.col-2-left-600 {
+	float: none;
+	width: 100%
+}
+
+.col-2-right-400 {
+	float: none;
+	width: 100%
+}
+
+/* 300 / 700 */
+.col-2-left-300 {
+	float: none;
+	width: 100%
+}
+
+.col-2-right-700 {
+	float: none;
+	width: 100%
+}
+
+/* 500 / 500 */
+.col-2-left-500,
+.col-2-right-500 {
+	float: none;
+	width: 100%
+}
+
+/* 300 / 700 */
+.col-2-left-700 {
+	float: none;
+	width: 100%
+}
+.col-2-right-300 {
+	float: none;
+	width: 100%
+}
+
+/* Golden Ratio: 620 / 380 */
+.col-2-left-620 {
+	float: none;
+	width: 100%
+	
+}
+
+.col-2-right-380 {
+	float: none;
+	width: 100%
+}
+
+/* Golden Ratio: 620 / 380 */
+.col-2-left-380 {
+	float: none;
+	width: 100%
+	
+}
+
+.col-2-right-620 {
+	float: none;
+	width: 100%
+}
+
+/* Percentage Layouts: 30% / 70% */
+.col-2-left-30p {
+	width: 100%;
+	float:none
+}
+
+.col-2-right-70p {
+	width:100%;
+	float:none
+}
+
+/* Percentage Layouts: 70% / 30% */
+.col-2-left-70p {
+	width:100%;
+	float:none
+}
+
+.col-2-right-30p {
+	width:100%;
+	float:none
+}
+
+/* Percentage Layouts: 20% / 80% */
+.col-2-left-20p {
+	width:100%;
+	float:none
+}
+
+.col-2-right-80p {
+	width:100%;
+	float:none
+}
+
+/* Percentage Layouts: 80% / 20% */
+.col-2-left-80p {
+	width:100%;
+	float:none
+}
+
+.col-2-right-20p {
+	width:100%;
+	float:none
+}
