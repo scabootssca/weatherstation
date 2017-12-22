@@ -48,16 +48,22 @@ extern "C" {
 #define DEBUG_PRINTLN(...)
 #endif
 
+
 // Config
 #define ENABLE_DEEP_SLEEP false // Enable sleep, sleep length in microseconds 20e6 is 20 seconds
-#define DEEP_SLEEP_LENGTH 60e6
-#define NO_SLEEP_READING_DELAY 60000 // 60 Seconds for delay with deep sleep disabled
 
-#define MAX_READING_STORAGE 420 // How many readings to store in memory
-#define READING_SUBMIT_INTERVAL 10 // How many to have before attempting to submit
+#define READING_INTERVAL 300000 // 300000 is 5 minutes in ms
+#define SAMPLE_INTERVAL 2000
+#define SAMPLES_PER_READING READING_INTERVAL/SAMPLE_INTERVAL // How many samples to average for a reading 300000/2000 = 30 for one every 2 seconds
+
+#define MAX_READING_STORAGE 576 // How many readings to store in memory; 288 with 300000 ms samples (5 min) is 24 hours; 576 = 48 hours
+#define READING_SUBMIT_INTERVAL 1 // How many to have before attempting to submit
+
 #define MAX_FAILED_SUBMITS 3
 
-#define GMT_OFFSET -6
+#define N_ADC_SAMPLES 1
+
+#define SAMPLE_INDICATOR_LED_ENABLED false // Will flash each sample
 
 // Pin Assignments
 #define OK_LED_PIN 1
@@ -73,13 +79,16 @@ extern "C" {
 ADC_MODE(ADC_VCC);
 
 // Globals
+WeatherReading sampleReadings[SAMPLES_PER_READING];
+int sampleIndex = 0;
+
 WeatherReading storedReadings[MAX_READING_STORAGE];
 int readingIndex = 0;
 short int serverDownCounter = 0;
 
 
 int okLedState = HIGH;
-unsigned long lastSenseTime = 9999999;
+unsigned long lastSampleMillis = 9999999;
 
 // Real Time Clock
 RTC_DS1307 RTC;
@@ -98,9 +107,12 @@ bool bmeConnected = true;
 // Reciperical of it is 0.09739260404185239
 #define ANEMOMETER_CALIBRATION_COEF 0.09739260404185239
 #define ANEMOMETER_PIN 2
-#define ANEMOMETER_SAMPLE_LENGTH NO_SLEEP_READING_DELAY//30000 // In ms
-volatile unsigned int anemometerSampleCount = 0;
 unsigned long lastAnemometerReadingMillis = 0;
+
+volatile unsigned int anemometerPulseCount = 0;
+
+volatile unsigned long anemometerSampleSum = 0;
+volatile unsigned int anemometerSampleCount = 0;
 
 // Wind Vane
 //#define WIND_VANE_ENABLE_PIN
@@ -287,8 +299,6 @@ bool submit_reading(WeatherReading currentReading, bool disconnectAfterSubmissio
       Serial.println(httpCode);
     }
 
-    mcp.digitalWrite(ERROR_LED_PIN, success ? LOW : HIGH);
-
     noInterrupts();
     http.end();
 
@@ -311,14 +321,8 @@ void submit_stored_readings() {
 
   short numConsecutiveFails = 0;
 
-  // Turn this off too
-  mcp.digitalWrite(OK_LED_PIN, LOW);
-
   // Go through the readings and submit any that are there
   for (int i=0; i<MAX_READING_STORAGE; i++) {
-    // Turn the light off for this now
-    mcp.digitalWrite(ERROR_LED_PIN, LOW);
-
     // If we've reached an unpopulated reading then we've reached the end and stop
     if (storedReadings[i].populated == false) {
       break;
@@ -332,10 +336,12 @@ void submit_stored_readings() {
 
     if (!success) {
       DEBUG_PRINTLN("Failed!, Caching for later.");
+			mcp.digitalWrite(ERROR_LED_PIN, HIGH);
       failedSubmissionIndexes[failedIndex++] = i;
       numConsecutiveFails++;
     } else {
       numConsecutiveFails = 0;
+			mcp.digitalWrite(OK_LED_PIN, HIGH);
     }
 
     // If the index is also the number of fails
@@ -350,9 +356,12 @@ void submit_stored_readings() {
       return;
     }
 
-    // Do background things between submissions
-    //yield();
-    delay(50); // Maybe this will let all go through? if we even still have them
+    // Don't want to overload (Need multi submit really)
+    delay(50);
+
+		// Turn the light off again
+		mcp.digitalWrite(ERROR_LED_PIN, LOW);
+		mcp.digitalWrite(OK_LED_PIN, LOW);
   }
 
   // Iterate through the reading indexes and if it's an index less than the failed count means it's a failed one
@@ -425,17 +434,37 @@ uint16_t readSPIADC(int channel=0) {
   return result;
 }
 
+
+
 float readSPIADCVoltage(int channel=0, float ratio=1.0) {
-  int refMv = ESP.getVcc() * 1.1725; // Cause internally is connected to ground apparently 1.1?
-  int reading = readSPIADC(channel);
+	float refMv = 0.0;
+	float reading = 0.0;
+
+	for (int i=0; i<N_ADC_SAMPLES; i++) {
+		refMv += ESP.getVcc() * 1.1725;
+		reading += readSPIADC(channel);
+
+		// DEBUG_PRINT("Converging ref: ");
+		// DEBUG_PRINTLN(refMv/(i+1));
+		// DEBUG_PRINT("Converging vbat: ");
+		// DEBUG_PRINTLN(reading/(i+1));
+
+		delay(1);
+	}
+
+
+  refMv /= N_ADC_SAMPLES;//ESP.getVcc() * 1.1725; // Cause internally is connected to ground apparently 1.1?
+  reading /= N_ADC_SAMPLES;//readSPIADC(channel);
   float resultMv = (refMv / 1023.0) * (reading * ratio);
 
-  Serial.print("refMv: ");
-  Serial.println(refMv);
-  Serial.print("reading: ");
-  Serial.println(reading);
-  Serial.print("resultMv: ");
-  Serial.println(resultMv);
+	DEBUG_PRINT("ADC channel: ");
+	DEBUG_PRINT(channel);
+  DEBUG_PRINT(" refMv: ");
+  DEBUG_PRINT(refMv);
+  DEBUG_PRINT(" reading: ");
+  DEBUG_PRINT(reading);
+  DEBUG_PRINT(" resultMv: ");
+  DEBUG_PRINTLN(resultMv);
 
   return resultMv;
 }
@@ -445,11 +474,11 @@ float readBatteryVoltage() {
 
   // Disable the solar panel to not interfere with the readings
   mcp.digitalWrite(SOLAR_ENABLE_PIN, LOW);
-  delay(50);
+  delay(1);
 
   // Switch on the voltage divider for the battery and charge the cap
   mcp.digitalWrite(BAT_ENABLE_PIN, HIGH);
-  delay(50); // Wait a bit
+  delay(1); // Wait a bit
 
   // Voltage afterwards
   float batteryVoltage = readSPIADCVoltage(0, dividerRatio);
@@ -484,24 +513,12 @@ int readWindVane() {
 float readAnemometer() {
 	DEBUG_PRINTLN("Sensing Anemometer");
 
-  // Delay longer if it hasn't been ANEMOMETER_SAMPLE_LENGTH seconds
-  // Samples will count using interrupts
-  long msToDelayAnemometer = ANEMOMETER_SAMPLE_LENGTH-(millis()-lastAnemometerReadingMillis);
-
-  if (msToDelayAnemometer > 0) {
-    DEBUG_PRINT("Sampling anemometer for an additional ");
-    DEBUG_PRINT(msToDelayAnemometer/1000);
-    DEBUG_PRINTLN(" seconds.");
-
-    waitMs(msToDelayAnemometer);
-  }
-
   int millisNow = millis();
 
   // Get how many samples we had
   noInterrupts();
-  int numTimelyAnemometerSamples = anemometerSampleCount;
-  anemometerSampleCount = 0;
+  int numTimelyAnemometerSamples = anemometerPulseCount;
+  anemometerPulseCount = 0;
   interrupts();
 
 	// mph = revolutions * measurementDuration * calibrationData
@@ -520,10 +537,8 @@ float readAnemometer() {
 }
 
 void ICACHE_RAM_ATTR do_mcp_isr() {
-  //uint8_t activeInterrupts = mcp.readInterrupts();
-
-  if (mcp.interruptOn(ANEMOMETER_PIN)) {//(activeInterrupts>>ANEMOMETER_PIN & 1 == 1) {
-    anemometerSampleCount++;
+  if (mcp.interruptOn(ANEMOMETER_PIN)) {
+    anemometerPulseCount++;
   }
 }
 
@@ -610,7 +625,7 @@ void setup() {
   mcp.pinMode(ANEMOMETER_PIN, INPUT);
   mcp.enableInterrupt(ANEMOMETER_PIN, RISING);
 
-  anemometerSampleCount = 0;
+  anemometerPulseCount = 0;
   lastAnemometerReadingMillis = millis();
 
   //******************************
@@ -619,57 +634,56 @@ void setup() {
   bmeConnected = bmeSensor.begin(0x76);
 
 	// Then set it to forced so we sleep
-	bmeSensor.setSampling(
-		bmeSensor.MODE_FORCED,
-		bmeSensor.SAMPLING_X16,
-		bmeSensor.SAMPLING_X16,
-		bmeSensor.SAMPLING_X16,
-		bmeSensor.FILTER_OFF,
-		bmeSensor.STANDBY_MS_0_5
-	);
+	if (bmeConnected) {
+		bmeSensor.setSampling(
+			bmeSensor.MODE_FORCED,
+			bmeSensor.SAMPLING_X16,
+			bmeSensor.SAMPLING_X16,
+			bmeSensor.SAMPLING_X16,
+			bmeSensor.FILTER_OFF,
+			bmeSensor.STANDBY_MS_0_5
+		);
+	} else {
+		Serial.println("BME280 sensor is not detected at i2caddr 0x76; check wiring.");
+	}
 
+	// Init is done turn them back off
   mcp.digitalWrite(OK_LED_PIN, LOW);
   mcp.digitalWrite(ERROR_LED_PIN, LOW);
 }
 
-void loop() {
-  if (millis()-lastSenseTime < NO_SLEEP_READING_DELAY) {
-    return;
-  }
+bool takeSample() {
+	DEBUG_PRINTLN();
+	DEBUG_PRINT("Taking Sample on Index: ");
+	DEBUG_PRINT(sampleIndex);
+	DEBUG_PRINT("/");
+	DEBUG_PRINTLN(SAMPLES_PER_READING-1);
 
-  lastSenseTime = millis();
-
-  DEBUG_PRINT("Starting Sensing on Sample Index: ");
-  DEBUG_PRINTLN(readingIndex);
-
-  // First reset any error lights from last runs then turn on the reading led
-  mcp.digitalWrite(ERROR_LED_PIN, LOW);
-  mcp.digitalWrite(OK_LED_PIN, HIGH);
-
-  //******************************************/
+	//******************************************/
   //* TEMPERATURE, HUMIDITY, BAROMETER BLOCK */
   //******************************************/
-  DEBUG_PRINTLN("Sensing BME");
+  //DEBUG_PRINTLN("Sensing BME");
 
   float bmeTemp = NAN;
   float bmePressure = NAN;
   float bmeHumidity = NAN;
 
   if (bmeConnected) {
-		// Need this cause we'll be sleeping all the other time
-		bmeSensor.takeForcedMeasurement();
-    bmeTemp = bmeSensor.readTemperature();
-    bmePressure = bmeSensor.readPressure();
-    bmeHumidity = bmeSensor.readHumidity();
 
-    DEBUG_PRINT("BME Temp: ");
-    DEBUG_PRINT(bmeTemp);
-    DEBUG_PRINT(" Pressure: ");
-    DEBUG_PRINT(bmePressure);
-    DEBUG_PRINT(" Humidity: ");
-    DEBUG_PRINTLN(bmeHumidity);
-  } else {
-    DEBUG_PRINTLN("BME Disconnected");
+		for (int i=0; i<5; i++) {
+			Serial.println("Sampling BME280");
+
+			// Need this cause we'll be sleeping all the other time
+			bmeSensor.takeForcedMeasurement();
+
+			bmeTemp = bmeSensor.readTemperature();
+			bmePressure = bmeSensor.readPressure();
+			bmeHumidity = bmeSensor.readHumidity();
+
+			if (!isnan(bmeTemp) && !isnan(bmePressure) && !isnan(bmeHumidity)) {
+				break;
+			}
+		}
   }
 
   //******************************************/
@@ -691,30 +705,10 @@ void loop() {
   //* STORAGE BLOCK */
   //*****************/
   // Get the block storing the reading we want to modify
-  WeatherReading *currentReading = &storedReadings[readingIndex++];
+  WeatherReading *currentReading = &sampleReadings[sampleIndex++];
 
-  DateTime now = RTC.now();
-  currentReading->timestamp = now.unixtime();
-
-  // For displaying with timezone offset set to -6 CST by default for now maybe needs a define
-  now = DateTime(now + TimeSpan(60*60*GMT_OFFSET));
-
-  DEBUG_PRINT("Timestamp: ");
-  DEBUG_PRINT(currentReading->timestamp, DEC);
-  DEBUG_PRINT(" ");
-  DEBUG_PRINT(now.month(), DEC);
-  DEBUG_PRINT('/');
-  DEBUG_PRINT(now.day(), DEC);
-  DEBUG_PRINT('/');
-  DEBUG_PRINT(now.year(), DEC);
-  DEBUG_PRINT(' ');
-  DEBUG_PRINT(now.hour(), DEC);
-  DEBUG_PRINT(':');
-  DEBUG_PRINT(now.minute(), DEC);
-  DEBUG_PRINT(':');
-  DEBUG_PRINT(now.second(), DEC);
-  DEBUG_PRINTLN();
-
+  //DateTime now = RTC.now();
+  //currentReading->timestamp = now.unixtime();
   currentReading->temperature = bmeTemp;
   currentReading->humidity = bmeHumidity;
   currentReading->pressure = bmePressure;
@@ -722,44 +716,105 @@ void loop() {
   currentReading->windSpeed = anemometerMph;
   currentReading->windDirection = windDegrees;
 
-  currentReading->populated = true;
+	//printWeatherReading(*currentReading);
 
-  // If we've reached the last reading then goto the beginning again
-  if (readingIndex >= MAX_READING_STORAGE) {
-    readingIndex = 0;
-  }
+	// If we've reached the last reading then goto the beginning again
+	if (sampleIndex >= SAMPLES_PER_READING) {
+		sampleIndex = 0;
+	}
+}
 
+void storeAveragedSamples() {
+	DEBUG_PRINTLN();
+	DEBUG_PRINT("Averaging samples as reading: ");
+	DEBUG_PRINTLN(readingIndex);
 
-  //****************/
-  //* OUTPUT BLOCK */
-  //****************/
-  // Count the attemts to wait at least serverDownCounter attempts before submitting again
-  if (serverDownCounter > 0) {
-    serverDownCounter--;
-    DEBUG_PRINT("Server down counter is now: ");
-    DEBUG_PRINTLN(serverDownCounter);
-  // All good then submit every READING_SUBMIT_INTERVAL
+	WeatherReading *currentReading = &storedReadings[readingIndex++];
+
+	// Save the time
+	DateTime now = RTC.now();
+	currentReading->timestamp = now.unixtime();
+
+	// Average all the samples
+	for (int i=0; i<SAMPLES_PER_READING; i++) {
+		currentReading->temperature += sampleReadings[i].temperature;
+		currentReading->humidity += sampleReadings[i].humidity;
+		currentReading->pressure += sampleReadings[i].pressure;
+		currentReading->battery += sampleReadings[i].battery;
+		currentReading->windSpeed += sampleReadings[i].windSpeed;
+		currentReading->windDirection += sampleReadings[i].windDirection;
 	}
 
-	if (!serverDownCounter && readingIndex >= READING_SUBMIT_INTERVAL) {
-    DEBUG_PRINT("Starting Submitting Readings");
-    submit_stored_readings();
+	currentReading->temperature /= SAMPLES_PER_READING;
+	currentReading->humidity /= SAMPLES_PER_READING;
+	currentReading->pressure /= SAMPLES_PER_READING;
+	currentReading->battery /= SAMPLES_PER_READING;
+	currentReading->windSpeed /= SAMPLES_PER_READING;
+	currentReading->windDirection /= SAMPLES_PER_READING;
+
+	currentReading->populated = true;
+
+	printWeatherReading(*currentReading);
+
+	// If we've reached the last reading then goto the beginning again
+	if (readingIndex >= MAX_READING_STORAGE) {
+		readingIndex = 0;
+	}
+}
+
+void loop() {
+  if (millis()-lastSampleMillis < SAMPLE_INTERVAL) {
+		delay(1);
+    return;
   }
 
+	#if SAMPLE_INDICATOR_LED_ENABLED
+	mcp.digitalWrite(OK_LED_PIN, HIGH);
+	#endif
 
-  ///////
-  // Done now
-  mcp.digitalWrite(OK_LED_PIN, LOW);
-  mcp.digitalWrite(ERROR_LED_PIN, LOW);
+	// Take a weather reading sample
+	lastSampleMillis = millis();
+	takeSample();
 
-  DEBUG_PRINT("Free Heap: ");
-  DEBUG_PRINTLN(ESP.getFreeHeap(), DEC);
-  DEBUG_PRINTLN("Sleeping Now");
-  DEBUG_PRINTLN();
+	// If we're at the first sample then we've taken all of ours
+	if (sampleIndex == 0) {
+		storeAveragedSamples();
 
-  #if ENABLE_DEEP_SLEEP
-  ESP.deepSleep(DEEP_SLEEP_LENGTH);
-  #else
-  waitMs(NO_SLEEP_READING_DELAY);
-  #endif
+	  //****************/
+	  //* OUTPUT BLOCK */
+	  //****************/
+	  // Count the attemts to wait at least serverDownCounter attempts before submitting again
+	  if (serverDownCounter > 0) {
+	    serverDownCounter--;
+	    DEBUG_PRINT("Server down counter is now: ");
+	    DEBUG_PRINTLN(serverDownCounter);
+	  // All good then submit every READING_SUBMIT_INTERVAL
+		}
+
+		if (!serverDownCounter && readingIndex >= READING_SUBMIT_INTERVAL) {
+	    DEBUG_PRINT("Starting Submitting Readings");
+	    submit_stored_readings();
+	  }
+	}
+
+	#if SAMPLE_INDICATOR_LED_ENABLED
+	mcp.digitalWrite(OK_LED_PIN, LOW);
+	#endif
+
+	// It'll be negative if we've waited long enough or millis rolls over
+	int sleepLength = SAMPLE_INTERVAL-(millis()-lastSampleMillis);
+
+	DEBUG_PRINT("Free Heap: ");
+	DEBUG_PRINTLN(ESP.getFreeHeap(), DEC);
+	DEBUG_PRINT("Sleeping For: ");
+	DEBUG_PRINT(sleepLength);
+	DEBUG_PRINTLN(" ms ");
+
+	if (sleepLength > 0) {
+	  #if ENABLE_DEEP_SLEEP
+	  ESP.deepSleep(sleepLength*1000);
+	  #else
+	  waitMs(sleepLength);
+	  #endif
+	}
 }
