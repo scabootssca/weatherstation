@@ -1,11 +1,13 @@
+#include "RTClib.h"
+
 struct WeatherReading {
 	uint32_t timestamp;
-	float temperature = NAN;
-	float humidity = NAN;
-	float pressure;
-	float battery;
-	float windSpeed;
-	float windDirection;
+	float temperature = 0;
+	float humidity = 0;
+	float pressure = 0;
+	float battery = 0;
+	float windSpeed = 0;
+	float windDirection = 0;
 
   bool populated = false;
 };
@@ -23,6 +25,45 @@ struct WeatherReading {
 //   return 0;
 // }
 
+void printWeatherReading(WeatherReading reading) {
+	// For displaying them in local time
+	DateTime readingTimeLocal = DateTime(DateTime(reading.timestamp) + TimeSpan(60*60*GMT_OFFSET));
+
+	Serial.print("Timestamp: ");
+	Serial.print(reading.timestamp, DEC);
+	Serial.print(" ");
+	Serial.print(readingTimeLocal.month(), DEC);
+	Serial.print('/');
+	Serial.print(readingTimeLocal.day(), DEC);
+	Serial.print('/');
+	Serial.print(readingTimeLocal.year(), DEC);
+	Serial.print(' ');
+	Serial.print(readingTimeLocal.hour(), DEC);
+	Serial.print(':');
+	Serial.print(readingTimeLocal.minute(), DEC);
+	Serial.print(':');
+	Serial.print(readingTimeLocal.second(), DEC);
+	Serial.println();
+
+	Serial.print("Temp: ");
+	Serial.print(reading.temperature);
+	Serial.println("*C");
+	Serial.print("Pressure: ");
+	Serial.print(reading.pressure);
+	Serial.println("hpa");
+	Serial.print("Humidity: ");
+	Serial.print(reading.humidity);
+	Serial.println('%');
+	Serial.print("Battery: ");
+	Serial.print(reading.battery);
+	Serial.println("mV");
+	Serial.print("Wind Speed: ");
+	Serial.print(reading.windSpeed);
+	Serial.println("mph");
+	Serial.print("Wind Direction: ");
+	Serial.print(reading.windDirection);
+	Serial.println("deg");
+}
 
 void copyWeatherReading(WeatherReading src, WeatherReading dest) {
 	dest.timestamp = src.timestamp;
