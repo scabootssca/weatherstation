@@ -339,8 +339,8 @@ void submit_stored_readings() {
       failedSubmissionIndexes[failedIndex++] = i;
       numConsecutiveFails++;
     } else {
-      numConsecutiveFails = 0;
 			mcp.digitalWrite(OK_LED_PIN, HIGH);
+      numConsecutiveFails = 0;
     }
 
     // If the index is also the number of fails
@@ -354,7 +354,6 @@ void submit_stored_readings() {
       DEBUG_PRINT("Aborting submission, the server must be down. Counter is: ");
       serverDownCounter = READING_SUBMIT_INTERVAL; // Includes 0 so 4 is don't try for 4 times and try on the 5th
       DEBUG_PRINTLN(serverDownCounter);
-
       disconnectFromWiFi();
       return;
     }
@@ -378,9 +377,10 @@ void submit_stored_readings() {
       //^Was like that before but after the server being down for a while when it finally came back up the esp only submitted the last few readings or random ones
       // No idea why should work according to tests on my desk. Maybe was passing reference so they got overwritten?
       copyWeatherReading(storedReadings[failedSubmissionIndexes[i]], storedReadings[i]);
-    // Else flag it as not populated
+    // Else flag it as not populated/zero it
     } else {
-      storedReadings[i].populated = false;
+			zeroWeatherReading(&storedReadings[i]);
+      //storedReadings[i].populated = false;
     }
   }
 
