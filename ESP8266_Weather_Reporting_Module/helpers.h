@@ -12,7 +12,6 @@ struct WeatherReading {
   bool populated = false;
 };
 
-
 // // Return RSSI or 0 if target SSID not found
 // int32_t getRSSI(const char* target_ssid) {
 //   byte available_networks = WiFi.scanNetworks();
@@ -63,6 +62,17 @@ void printWeatherReading(WeatherReading reading) {
 	Serial.print("Wind Direction: ");
 	Serial.print(reading.windDirection);
 	Serial.println("deg");
+}
+
+void zeroWeatherReading(WeatherReading *reading) {
+	reading->timestamp = 0;
+	reading->temperature = 0;
+	reading->humidity = 0;
+	reading->pressure = 0;
+	reading->battery = 0;
+	reading->windSpeed = 0;
+	reading->windDirection = 0;
+  reading->populated = false;
 }
 
 void copyWeatherReading(WeatherReading src, WeatherReading dest) {
