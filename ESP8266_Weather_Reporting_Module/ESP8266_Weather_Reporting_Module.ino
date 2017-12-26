@@ -162,6 +162,7 @@ bool connectToWiFi() {
 
     // Wait 10 secs and give up
     if (totalWaitTime > 30000) {
+			mcp.digitalWrite(OK_LED_PIN, LOW);
       DEBUG_PRINTLN("WiFi error connecting.");
       return false;
     }
@@ -346,6 +347,10 @@ void submit_stored_readings() {
     // And if we've failed too many times in a row then quit
     // The server must be down
     if (i == numConsecutiveFails-1 && numConsecutiveFails > MAX_FAILED_SUBMITS) {
+			// Turn lamps off
+			mcp.digitalWrite(OK_LED_PIN, LOW);
+			mcp.digitalWrite(ERROR_LED_PIN, LOW);
+
       DEBUG_PRINT("Aborting submission, the server must be down. Counter is: ");
       serverDownCounter = READING_SUBMIT_INTERVAL; // Includes 0 so 4 is don't try for 4 times and try on the 5th
       DEBUG_PRINTLN(serverDownCounter);
@@ -357,9 +362,9 @@ void submit_stored_readings() {
     // Don't want to overload (Need multi submit really)
     delay(50);
 
-		// Turn the light off again
-		mcp.digitalWrite(ERROR_LED_PIN, LOW);
+		// Turn lamps off
 		mcp.digitalWrite(OK_LED_PIN, LOW);
+		mcp.digitalWrite(ERROR_LED_PIN, LOW);
   }
 
   // Iterate through the reading indexes and if it's an index less than the failed count means it's a failed one
@@ -786,9 +791,9 @@ void loop() {
 	  }
 	}
 
-	#if SAMPLE_INDICATOR_LED_ENABLED
+	// Turn the light off again
+	mcp.digitalWrite(ERROR_LED_PIN, LOW);
 	mcp.digitalWrite(OK_LED_PIN, LOW);
-	#endif
 
 	// It'll be negative if we've waited long enough or millis rolls over
 	int sleepLength = SAMPLE_INTERVAL-(millis()-lastSampleMillis);
