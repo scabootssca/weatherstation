@@ -705,18 +705,20 @@ bool takeSample() {
   //* STORAGE BLOCK */
   //*****************/
   // Get the block storing the reading we want to modify
-  WeatherReading *currentReading = &sampleReadings[sampleIndex++];
+  WeatherReading *sampleReading = &sampleReadings[sampleIndex++];
 
-  //DateTime now = RTC.now();
-  //currentReading->timestamp = now.unixtime();
-  currentReading->temperature = bmeTemp;
-  currentReading->humidity = bmeHumidity;
-  currentReading->pressure = bmePressure;
-  currentReading->battery = batteryVoltage;
-  currentReading->windSpeed = anemometerMph;
-  currentReading->windDirection = windDegrees;
+  DateTime now = RTC.now();
+  sampleReading->timestamp = now.unixtime();
+  sampleReading->temperature = bmeTemp;
+  sampleReading->humidity = bmeHumidity;
+  sampleReading->pressure = bmePressure;
+  sampleReading->battery = batteryVoltage;
+  sampleReading->windSpeed = anemometerMph;
+  sampleReading->windDirection = windDegrees;
 
-	//printWeatherReading(*currentReading);
+	#if DEBUG
+	printWeatherReading(*sampleReading);
+	#endif
 
 	// If we've reached the last reading then goto the beginning again
 	if (sampleIndex >= SAMPLES_PER_READING) {
