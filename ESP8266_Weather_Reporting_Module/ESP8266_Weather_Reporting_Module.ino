@@ -38,7 +38,7 @@ extern "C" {
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 
-#define DEBUG 1
+#define DEBUG 2
 
 #if DEBUG
 #define DEBUG_PRINT(...) Serial.print( __VA_ARGS__ )
@@ -182,7 +182,6 @@ bool connectToWiFi() {
 
 void disconnectFromWiFi() {
   if (WiFi.status() != WL_CONNECTED) {
-    //DEBUG_PRINTLN("Tried to disconnect while already disconnected");
     return;
   }
 
@@ -267,7 +266,7 @@ bool submit_reading(WeatherReading currentReading, bool disconnectAfterSubmissio
       if(httpCode == HTTP_CODE_OK) {
         String payload = http.getString();
 
-        Serial.print("Got payload: ");
+        Serial.println("Got payload: ");
         Serial.println(payload);
 
         if (payload.startsWith("S")) {
@@ -288,7 +287,6 @@ bool submit_reading(WeatherReading currentReading, bool disconnectAfterSubmissio
           success = true;
         } else {
           Serial.println("Failure: Invalid payload");
-          Serial.println(payload);
         }
       } else {
         Serial.print("Http Error: ");
@@ -335,8 +333,8 @@ void submit_stored_readings() {
     bool success = submit_reading(storedReadings[i], false, !i);
 
     if (!success) {
-      DEBUG_PRINTLN("Failed!, Caching for later.");
 			mcp.digitalWrite(ERROR_LED_PIN, HIGH);
+      DEBUG_PRINTLN("Failed!, Caching for later.");
       failedSubmissionIndexes[failedIndex++] = i;
       numConsecutiveFails++;
     } else {
@@ -423,11 +421,6 @@ uint16_t readSPIADC(int channel=0) {
 
   uint16_t result = ((msb << 8) | lsb) & 0b0000001111111111;
 
-  // DEBUG_PRINT("Reading ADC Channel ");
-  // DEBUG_PRINT(channel);
-  // DEBUG_PRINT(": ");
-  // DEBUG_PRINTLN(result);
-
   mcp.digitalWrite(ADC_CS_PIN, HIGH);
   SPI.endTransaction();
 
@@ -443,11 +436,6 @@ float readSPIADCVoltage(int channel=0, float ratio=1.0) {
 	for (int i=0; i<N_ADC_SAMPLES; i++) {
 		refMv += ESP.getVcc() * 1.1725;
 		reading += readSPIADC(channel);
-
-		// DEBUG_PRINT("Converging ref: ");
-		// DEBUG_PRINTLN(refMv/(i+1));
-		// DEBUG_PRINT("Converging vbat: ");
-		// DEBUG_PRINTLN(reading/(i+1));
 
 		delay(1);
 	}
@@ -501,18 +489,18 @@ int readWindVane() {
   float windVaneReading = readSPIADC(WIND_VANE_PIN);
   int windDegrees = map(windVaneReading, 2, 991, 0, 360);
 
+	#if DEBUG >= 3
   DEBUG_PRINT("Wind Pin Reading: ");
   DEBUG_PRINTLN(windVaneReading);
   DEBUG_PRINT("Wind Direction: ");
   DEBUG_PRINT(windDegrees);
   DEBUG_PRINTLN(" degrees");
+	#endif
 
   return windDegrees;
 }
 
 float readAnemometer() {
-	DEBUG_PRINTLN("Sensing Anemometer");
-
   int millisNow = millis();
 
   // Get how many samples we had
@@ -524,12 +512,15 @@ float readAnemometer() {
 	// mph = revolutions * measurementDuration * calibrationData
 	float anemometerMph = (numTimelyAnemometerSamples * 0.5) * (60000.0 / (millisNow-lastAnemometerReadingMillis)) * ANEMOMETER_CALIBRATION_COEF;
 
+	#if DEBUG >= 2
+	DEBUG_PRINT("Anemometer: ");
   DEBUG_PRINT(numTimelyAnemometerSamples);
   DEBUG_PRINT(" Samples in last ");
   DEBUG_PRINT((millisNow-lastAnemometerReadingMillis)/1000.0);
   DEBUG_PRINT(" second ");
   DEBUG_PRINT(anemometerMph);
   DEBUG_PRINTLN(" MPH");
+	#endif
 
   lastAnemometerReadingMillis = millisNow;
 
@@ -662,8 +653,6 @@ bool takeSample() {
 	//******************************************/
   //* TEMPERATURE, HUMIDITY, BAROMETER BLOCK */
   //******************************************/
-  //DEBUG_PRINTLN("Sensing BME");
-
   float bmeTemp = NAN;
   float bmePressure = NAN;
   float bmeHumidity = NAN;
@@ -671,8 +660,6 @@ bool takeSample() {
   if (bmeConnected) {
 
 		for (int i=0; i<5; i++) {
-			Serial.println("Sampling BME280");
-
 			// Need this cause we'll be sleeping all the other time
 			bmeSensor.takeForcedMeasurement();
 
