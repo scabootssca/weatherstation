@@ -54,6 +54,11 @@ extern "C" {
 #define DEBUG_PRINTLN(...)
 #endif
 
+#define CALIBRATION_MODE 0
+#if CALIBRATION_MODE
+int CALIB_windVaneMax = 0;
+int CALIB_windVaneMin = 1024;
+#endif
 
 // Config
 #define ENABLE_DEEP_SLEEP false // Enable sleep, sleep length in microseconds 20e6 is 20 seconds
@@ -123,6 +128,8 @@ volatile unsigned int anemometerSampleCount = 0;
 // Wind Vane
 //#define WIND_VANE_ENABLE_PIN
 #define WIND_VANE_PIN 1
+#define WIND_VANE_MIN 0
+#define WIND_VANE_MAX 1023
 
 bool connectToWiFi() {
 	// If we're connected then return
@@ -497,8 +504,8 @@ float readBatteryVoltage() {
 }
 
 int readWindVane() {
-  float windVaneReading = readSPIADC(WIND_VANE_PIN);
-  int windDegrees = map(windVaneReading, 2, 991, 0, 360);
+  int windVaneReading = readSPIADC(WIND_VANE_PIN);
+  int windDegrees = map(windVaneReading, WIND_VANE_MIN, WIND_VANE_MAX, 0, 360);
 
 	#if DEBUG >= 3
   DEBUG_PRINT("Wind Pin Reading: ");
@@ -763,6 +770,29 @@ void storeAveragedSamples() {
 }
 
 void loop() {
+	#if CALIBRATION_MODE
+	int windVaneReading = readSPIADC(WIND_VANE_PIN);
+
+	if (windVaneReading > CALIB_windVaneMax) {
+		CALIB_windVaneMax = windVaneReading;
+	}
+
+	if (windVaneReading < CALIB_windVaneMin) {
+		CALIB_windVaneMin = windVaneReading;
+	}
+
+	if (millis()-lastSampleMillis > 1000) {
+			Serial.print("Wind Vane Max: ");
+			Serial.println(CALIB_windVaneMax);
+			Serial.print("Wind Vane Min: ");
+			Serial.println(CALIB_windVaneMin);
+			lastSampleMillis = millis();
+
+	}
+
+	return;
+	#endif
+
   if (millis()-lastSampleMillis < SAMPLE_INTERVAL) {
 		delay(1);
     return;
