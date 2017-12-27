@@ -138,32 +138,22 @@ bool connectToWiFi() {
 		return true;
 	}
 
-  DEBUG_PRINTLN("Not Connected");
-
   //******************************
-  //* Init WiFi variables
+  //* Init WiFi
   //******************************
-  //IPAddress ip(MY_IP);
-  //IPAddress gateway(GATEWAY_IP);
-  //IPAddress subnet(SUBNET_MASK);
-
   WiFi.forceSleepWake();
   delay(1);
-
-  //WiFi.persistent(false);
-  //WiFi.mode(WIFI_STA);
 
   Serial.print("Connecting to: ");
   Serial.println(WIFI_SSID);
 
-  //WiFi.config(ip, gateway, subnet);
+	WiFi.mode(WIFI_STA); // Station mode not AP
 
   noInterrupts();
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   interrupts();
 
-  //wifi_set_sleep_type(LIGHT_SLEEP_T);
-
+	// Wait for a connection
   unsigned int totalWaitTime = 0;
 
   while (WiFi.status() != WL_CONNECTED) {
@@ -175,7 +165,9 @@ bool connectToWiFi() {
 
     // Wait 10 secs and give up
     if (totalWaitTime > 30000) {
+			okLedState = LOW;
 			mcp.digitalWrite(OK_LED_PIN, LOW);
+
       DEBUG_PRINTLN("WiFi error connecting.");
       return false;
     }
@@ -199,11 +191,17 @@ void disconnectFromWiFi() {
     return;
   }
 
-  noInterrupts();
-  bool disconnected = WiFi.disconnect();
-  WiFi.forceSleepBegin();
-  delay(1);
+  noInterrupts(); // Seems WiFi.disconnect also calls ETS_UART_INTR_DISABLE maybe this can be below it
+  bool disconnected = WiFi.disconnect(true);
+	interrupts();
+
+	delay(1);
+
+	noInterrupts();
+  WiFi.forceSleepBegin(); // This'll call mode(WIFI_OFF)
   interrupts();
+
+	delay(1);
 
   DEBUG_PRINT("Disconnected from wifi: ");
   DEBUG_PRINTLN(disconnected);
@@ -433,7 +431,7 @@ uint16_t readSPIADC(int channel=0) {
     cmd = 0b01111000;
   }
 
-  // Do one read to allow a lock and stabalize
+  // Read the sample from the adc
   byte msb = SPI.transfer(cmd);
   byte lsb = SPI.transfer(0);
 
@@ -444,8 +442,6 @@ uint16_t readSPIADC(int channel=0) {
 
   return result;
 }
-
-
 
 float readSPIADCVoltage(int channel=0, float ratio=1.0) {
 	float refMv = 0.0;
@@ -603,10 +599,8 @@ void setup() {
 	WiFi.config(ip, gateway, subnet);
 	WiFi.mode(WIFI_STA); // Station mode not AP
 
-	WiFi.forceSleepBegin();
-  //WiFi.mode(WIFI_OFF);
-  //WiFi.forceSleepBegin();
-  //delay(1);
+	WiFi.forceSleepBegin(); // This'll call WiFi.mode(WIFI_OFF);
+	delay(1);
   //wifi_set_sleep_type(LIGHT_SLEEP_T);
 
   //******************************
@@ -616,7 +610,7 @@ void setup() {
   mcp.digitalWrite(SOLAR_ENABLE_PIN, HIGH);
 
   //******************************
-  //* Init battery reading if enabled instead of vcc reading
+  //* Battery divider enable pin
   //******************************
   mcp.pinMode(BAT_ENABLE_PIN, OUTPUT);
   mcp.digitalWrite(BAT_ENABLE_PIN, LOW);
