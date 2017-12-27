@@ -36,7 +36,13 @@ extern "C" {
 #include "./Adafruit_MCP23008.h"
 
 #include <Adafruit_Sensor.h>
+//
+// #define USE_ADAFRUIT_BME280 1
+// #if USE_ADAFRUIT_BME280
 #include <Adafruit_BME280.h>
+// #else
+// #include "libraries/BME280_driver/bme280.h"
+// #endif
 
 #define DEBUG 2
 
