@@ -12,6 +12,18 @@ struct WeatherReading {
   bool populated = false;
 };
 
+struct WeatherReadingDouble {
+	uint32_t timestamp;
+	double temperature = 0;
+	double humidity = 0;
+	double pressure = 0;
+	double battery = 0;
+	double windSpeed = 0;
+	double windDirection = 0;
+
+	bool populated = false;
+};
+
 // // Return RSSI or 0 if target SSID not found
 // int32_t getRSSI(const char* target_ssid) {
 //   byte available_networks = WiFi.scanNetworks();
@@ -64,7 +76,58 @@ void printWeatherReading(WeatherReading reading) {
 	Serial.println("deg");
 }
 
+void printWeatherReading(WeatherReadingDouble reading) {
+	// For displaying them in local time
+	DateTime readingTimeLocal = DateTime(DateTime(reading.timestamp) + TimeSpan(60*60*GMT_OFFSET));
+
+	Serial.print("Timestamp: ");
+	Serial.print(reading.timestamp, DEC);
+	Serial.print(" ");
+	Serial.print(readingTimeLocal.month(), DEC);
+	Serial.print('/');
+	Serial.print(readingTimeLocal.day(), DEC);
+	Serial.print('/');
+	Serial.print(readingTimeLocal.year(), DEC);
+	Serial.print(' ');
+	Serial.print(readingTimeLocal.hour(), DEC);
+	Serial.print(':');
+	Serial.print(readingTimeLocal.minute(), DEC);
+	Serial.print(':');
+	Serial.print(readingTimeLocal.second(), DEC);
+	Serial.println();
+
+	Serial.print("Temp: ");
+	Serial.print(reading.temperature);
+	Serial.println("*C");
+	Serial.print("Pressure: ");
+	Serial.print(reading.pressure);
+	Serial.println("hpa");
+	Serial.print("Humidity: ");
+	Serial.print(reading.humidity);
+	Serial.println('%');
+	Serial.print("Battery: ");
+	Serial.print(reading.battery);
+	Serial.println("mV");
+	Serial.print("Wind Speed: ");
+	Serial.print(reading.windSpeed);
+	Serial.println("mph");
+	Serial.print("Wind Direction: ");
+	Serial.print(reading.windDirection);
+	Serial.println("deg");
+}
+
 void zeroWeatherReading(WeatherReading *reading) {
+	reading->timestamp = 0;
+	reading->temperature = 0;
+	reading->humidity = 0;
+	reading->pressure = 0;
+	reading->battery = 0;
+	reading->windSpeed = 0;
+	reading->windDirection = 0;
+  reading->populated = false;
+}
+
+void zeroWeatherReading(WeatherReadingDouble *reading) {
 	reading->timestamp = 0;
 	reading->temperature = 0;
 	reading->humidity = 0;
