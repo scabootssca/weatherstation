@@ -90,8 +90,8 @@ int CALIB_windVaneMin = 1024;
 ADC_MODE(ADC_VCC);
 
 // Globals
-WeatherReading sampleReadings[SAMPLES_PER_READING];
-int sampleIndex = 0;
+WeatherReadingDouble *sampleAccumulator = new WeatherReadingDouble;
+int numSamples = 0;
 
 WeatherReading storedReadings[MAX_READING_STORAGE];
 int readingIndex = 0;
@@ -663,8 +663,8 @@ void setup() {
 
 bool takeSample() {
 	DEBUG_PRINTLN();
-	DEBUG_PRINT("Taking Sample on Index: ");
-	DEBUG_PRINT(sampleIndex);
+	DEBUG_PRINT("Taking Sample Num: ");
+	DEBUG_PRINT(numSamples);
 	DEBUG_PRINT("/");
 	DEBUG_PRINTLN(SAMPLES_PER_READING-1);
 
@@ -709,29 +709,39 @@ bool takeSample() {
   //*****************/
   //* STORAGE BLOCK */
   //*****************/
-  // Get the block storing the reading we want to modify
-  WeatherReading *sampleReading = &sampleReadings[sampleIndex++];
-
-  DateTime now = RTC.now();
-  sampleReading->timestamp = now.unixtime();
-  sampleReading->temperature = bmeTemp;
-  sampleReading->humidity = bmeHumidity;
-  sampleReading->pressure = bmePressure;
-  sampleReading->battery = batteryVoltage;
-  sampleReading->windSpeed = anemometerMph;
-  sampleReading->windDirection = windDegrees;
+	numSamples++;
+	//DateTime now = RTC.now();
+	//sampleAccumulator->timestamp = now.unixtime();
+	sampleAccumulator->temperature += bmeTemp;
+	sampleAccumulator->humidity += bmeHumidity;
+	sampleAccumulator->pressure += bmePressure;
+	sampleAccumulator->battery += batteryVoltage;
+	sampleAccumulator->windSpeed += anemometerMph;
+	sampleAccumulator->windDirection += windDegrees;
 
 	#if DEBUG
-	printWeatherReading(*sampleReading);
+	WeatherReading sampleReading;
+
+	DateTime now = RTC.now();
+	sampleReading.timestamp = now.unixtime();
+	sampleReading.temperature = bmeTemp;
+	sampleReading.humidity = bmeHumidity;
+	sampleReading.pressure = bmePressure;
+	sampleReading.battery = batteryVoltage;
+	sampleReading.windSpeed = anemometerMph;
+	sampleReading.windDirection = windDegrees;
+
+	printWeatherReading(sampleReading);
 	#endif
 
 	// If we've reached the last reading then goto the beginning again
-	if (sampleIndex >= SAMPLES_PER_READING) {
-		sampleIndex = 0;
+	if (numSamples >= SAMPLES_PER_READING) {
+		numSamples = 0;
 	}
 }
 
 void storeAveragedSamples() {
+	// Output
 	DEBUG_PRINTLN();
 	DEBUG_PRINT("Averaging samples as reading: ");
 	DEBUG_PRINTLN(readingIndex);
@@ -742,24 +752,16 @@ void storeAveragedSamples() {
 	DateTime now = RTC.now();
 	currentReading->timestamp = now.unixtime();
 
-	// Average all the samples
-	for (int i=0; i<SAMPLES_PER_READING; i++) {
-		currentReading->temperature += sampleReadings[i].temperature;
-		currentReading->humidity += sampleReadings[i].humidity;
-		currentReading->pressure += sampleReadings[i].pressure;
-		currentReading->battery += sampleReadings[i].battery;
-		currentReading->windSpeed += sampleReadings[i].windSpeed;
-		currentReading->windDirection += sampleReadings[i].windDirection;
-	}
-
-	currentReading->temperature /= SAMPLES_PER_READING;
-	currentReading->humidity /= SAMPLES_PER_READING;
-	currentReading->pressure /= SAMPLES_PER_READING;
-	currentReading->battery /= SAMPLES_PER_READING;
-	currentReading->windSpeed /= SAMPLES_PER_READING;
-	currentReading->windDirection /= SAMPLES_PER_READING;
-
+	// Divide the accumulator by the num samples for the average reading
+	currentReading->temperature = sampleAccumulator->temperature/float(SAMPLES_PER_READING);
+	currentReading->humidity = sampleAccumulator->humidity/float(SAMPLES_PER_READING);
+	currentReading->pressure = sampleAccumulator->pressure/float(SAMPLES_PER_READING);
+	currentReading->battery = sampleAccumulator->battery/float(SAMPLES_PER_READING);
+	currentReading->windSpeed = sampleAccumulator->windSpeed/float(SAMPLES_PER_READING);
+	currentReading->windDirection = sampleAccumulator->windDirection/float(SAMPLES_PER_READING);
 	currentReading->populated = true;
+
+	zeroWeatherReading(sampleAccumulator);
 
 	printWeatherReading(*currentReading);
 
@@ -807,7 +809,7 @@ void loop() {
 	takeSample();
 
 	// If we're at the first sample then we've taken all of ours
-	if (sampleIndex == 0) {
+	if (numSamples == 0) {
 		storeAveragedSamples();
 
 	  //****************/
