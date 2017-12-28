@@ -713,8 +713,11 @@ void ICACHE_RAM_ATTR do_mcp_isr() {
 }
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.setTimeout(500);
+
+	// Maybe store this ?
+	//ESP.getResetReason();
 
   // Wait for serial to initalize
   while (!Serial) {}
