@@ -80,12 +80,25 @@ int CALIB_windVaneMin = 1024;
 #define OK_LED_PIN 1
 #define ERROR_LED_PIN 0
 
-#define SOLAR_ENABLE_PIN 4
+#define SOLAR_ENABLE_PIN 3
 
-#define BAT_ENABLE_PIN 3
+#define BAT_ENABLE_PIN 4
+#define BAT_ADC_PIN 7
 
 #define INTERRUPT_PIN D2
 #define ADC_CS_PIN 7
+
+#define ADC_REF_PIN 0
+
+// Anemometer
+// rpm/coef = wind speed in mph
+#define ANEMOMETER_CALIBRATION_COEF 0.09739260404185239 // 10.2677201193868 = samples per 1mph
+#define ANEMOMETER_PIN 2
+
+// Wind Vane
+#define WIND_VANE_PIN 6
+#define WIND_VANE_MIN 0
+#define WIND_VANE_MAX 1023
 
 ADC_MODE(ADC_VCC);
 
@@ -112,24 +125,10 @@ Adafruit_MCP23008 mcp;
 Adafruit_BME280 bmeSensor;
 bool bmeConnected = true;
 
-// Anemometer
-// rpm/coef = wind speed in mph
-// 10.2677201193868 = samples per 1mph
-// Reciperical of it is 0.09739260404185239
-#define ANEMOMETER_CALIBRATION_COEF 0.09739260404185239
-#define ANEMOMETER_PIN 2
 unsigned long lastAnemometerReadingMillis = 0;
-
 volatile unsigned int anemometerPulseCount = 0;
-
 volatile unsigned long anemometerSampleSum = 0;
 volatile unsigned int anemometerSampleCount = 0;
-
-// Wind Vane
-//#define WIND_VANE_ENABLE_PIN
-#define WIND_VANE_PIN 1
-#define WIND_VANE_MIN 0
-#define WIND_VANE_MAX 1023
 
 bool connectToWiFi() {
 	// If we're connected then return
