@@ -410,27 +410,21 @@ void submit_stored_readings() {
 }
 
 uint16_t readSPIADC(int channel=0) {
-  // 1200000 is a good speed if we lower the pin impedance (<= ~10K ohm)
-  // 250000 because 5RC for the sample capacitor is 23K input impedance and 20pf cap
-  // So 5RC is 3.3us with RC constant of 660ns
-  // The capacitor needs to charge in at least one clock cycle so at 250k each cycle is
-  // 4us and should give enough time for the cap to charge fully
+	// Only 8 channels
+	if (channel > 7) {
+		return 0;
+	}
 
-  int spiHz = 900000;//1200000;//250000; /* Seems it doesn't it wants to take longer, so a slower clock */
+  int spiHz = 500000; /* Seems it doesn't it wants to take longer, so a slower clock */
   SPI.beginTransaction(SPISettings(spiHz, MSBFIRST, SPI_MODE0));
   mcp.digitalWrite(ADC_CS_PIN, LOW);
 
   delay(1);
 
-  // Channel 0 by default
-  uint8_t cmd = 0b01101000;
-
-  // Channel 1 will do a different command
-  if (channel) {
-    cmd = 0b01111000;
-  }
+	uint8_t cmd = 0b10000000 | channel<<4;
 
   // Read the sample from the adc
+	SPI.transfer(0b00000001);
   byte msb = SPI.transfer(cmd);
   byte lsb = SPI.transfer(0);
 
@@ -443,27 +437,25 @@ uint16_t readSPIADC(int channel=0) {
 }
 
 float readSPIADCVoltage(int channel=0, float ratio=1.0) {
-	float refMv = 0.0;
-	float reading = 0.0;
+	float referencePinMv = 1880.0;
 
-	for (int i=0; i<N_ADC_SAMPLES; i++) {
-		refMv += ESP.getVcc() * 1.1725;
-		reading += readSPIADC(channel);
+	int refPinReading = readSPIADC(ADC_REF_PIN);
+	int channelPinReading = readSPIADC(channel);
 
-		delay(1);
-	}
-
-
-  refMv /= N_ADC_SAMPLES;//ESP.getVcc() * 1.1725; // Cause internally is connected to ground apparently 1.1?
-  reading /= N_ADC_SAMPLES;//readSPIADC(channel);
-  float resultMv = (refMv / 1023.0) * (reading * ratio);
+	float vccMv = (1023.0 / refPinReading) * referencePinMv;
+  float readingMv = (vccMv / 1023.0) * channelPinReading;
+	float resultMv = readingMv * ratio;
 
 	DEBUG_PRINT("ADC channel: ");
 	DEBUG_PRINT(channel);
-  DEBUG_PRINT(" refMv: ");
-  DEBUG_PRINT(refMv);
-  DEBUG_PRINT(" reading: ");
-  DEBUG_PRINT(reading);
+	DEBUG_PRINT(" refPin: ");
+	DEBUG_PRINT(refPinReading);
+  DEBUG_PRINT(" vccMv: ");
+  DEBUG_PRINT(vccMv);
+  DEBUG_PRINT(" readingPin: ");
+  DEBUG_PRINT(channelPinReading);
+	DEBUG_PRINT(" readingMv: ");
+	DEBUG_PRINT(readingMv);
   DEBUG_PRINT(" resultMv: ");
   DEBUG_PRINTLN(resultMv);
 
@@ -471,18 +463,18 @@ float readSPIADCVoltage(int channel=0, float ratio=1.0) {
 }
 
 float readBatteryVoltage() {
-  float dividerRatio = 1.33511348465;//1.333333334; // R2/R1 3.008/1.002
+  float dividerRatio = 1.33511348465; // R2/R1 3.008/1.002
 
   // Disable the solar panel to not interfere with the readings
   mcp.digitalWrite(SOLAR_ENABLE_PIN, LOW);
-  delay(1);
+  delay(10);
 
   // Switch on the voltage divider for the battery and charge the cap
   mcp.digitalWrite(BAT_ENABLE_PIN, HIGH);
-  delay(1); // Wait a bit
+  delay(10); // Wait a bit
 
   // Voltage afterwards
-  float batteryVoltage = readSPIADCVoltage(0, dividerRatio);
+  float batteryVoltage = readSPIADCVoltage(BAT_ADC_PIN, dividerRatio);
 
   // Turn the divider back off
   mcp.digitalWrite(BAT_ENABLE_PIN, LOW);
