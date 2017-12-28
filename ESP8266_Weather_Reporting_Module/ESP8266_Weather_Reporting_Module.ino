@@ -662,6 +662,11 @@ bool takeSample() {
 	DEBUG_PRINTLN(SAMPLES_PER_READING-1);
 
 	//******************************************/
+	//* Battery block
+	//******************************************/
+	float batteryVoltage = readBatteryVoltage();
+
+	//******************************************/
   //* TEMPERATURE, HUMIDITY, BAROMETER BLOCK */
   //******************************************/
   float bmeTemp = NAN;
@@ -669,7 +674,6 @@ bool takeSample() {
   float bmeHumidity = NAN;
 
   if (bmeConnected) {
-
 		for (int i=0; i<5; i++) {
 			// Need this cause we'll be sleeping all the other time
 			bmeSensor.takeForcedMeasurement();
@@ -683,11 +687,6 @@ bool takeSample() {
 			}
 		}
   }
-
-  //******************************************/
-  //* Battery block
-  //******************************************/
-  float batteryVoltage = readBatteryVoltage();
 
   //******************************************/
   //* WIND VANE BLOCK
