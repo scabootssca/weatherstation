@@ -436,42 +436,44 @@ uint16_t readSPIADC(int channel=0) {
   return result;
 }
 
-float readSPIADCVoltage(int channel=0, float ratio=1.0) {
-	float referencePinMv = 1880.0;
-
+float readSPIADCVoltage(int channel=0, float ratio=1.0, int offset=0) {
+	int referencePinMv = 2500;
 	int refPinReading = readSPIADC(ADC_REF_PIN);
-	int channelPinReading = readSPIADC(channel);
-
 	float vccMv = (1023.0 / refPinReading) * referencePinMv;
-  float readingMv = (vccMv / 1023.0) * channelPinReading;
-	float resultMv = readingMv * ratio;
+
+	int channelPinReading = readSPIADC(channel);
+  float pinMv = (vccMv / 1023.0) * channelPinReading;
+
+	float readingMv = (pinMv * ratio) + offset;
 
 	DEBUG_PRINT("ADC channel: ");
 	DEBUG_PRINT(channel);
-	DEBUG_PRINT(" refPin: ");
+	DEBUG_PRINT(" refValue: ");
 	DEBUG_PRINT(refPinReading);
-  DEBUG_PRINT(" vccMv: ");
-  DEBUG_PRINT(vccMv);
-  DEBUG_PRINT(" readingPin: ");
+  DEBUG_PRINT(" pinValue: ");
   DEBUG_PRINT(channelPinReading);
-	DEBUG_PRINT(" readingMv: ");
-	DEBUG_PRINT(readingMv);
-  DEBUG_PRINT(" resultMv: ");
-  DEBUG_PRINTLN(resultMv);
+	DEBUG_PRINT(" vccMv: ");
+	DEBUG_PRINT(vccMv);
+	DEBUG_PRINT(" pinMv: ");
+	DEBUG_PRINT(pinMv);
+  DEBUG_PRINT(" readingMv: ");
+  DEBUG_PRINTLN(readingMv);
 
-  return resultMv;
+  return readingMv;
 }
 
 float readBatteryVoltage() {
-  float dividerRatio = 1.33511348465; // R2/R1 3.008/1.002
+	//1.33511348465; // R2/R1 3.008/1.002
+  float dividerRatio = 1.33511348465;//1.372997; // <-- As measured
+	// Includes drop from FET and battery comtroller circuit
 
   // Disable the solar panel to not interfere with the readings
   mcp.digitalWrite(SOLAR_ENABLE_PIN, LOW);
   delay(10);
 
-  // Switch on the voltage divider for the battery and charge the cap
+  // Switch on the voltage divider for the battery and charge the cap and stabilize reference voltage
   mcp.digitalWrite(BAT_ENABLE_PIN, HIGH);
-  delay(10); // Wait a bit
+  delay(100); // Wait a bit
 
   // Voltage afterwards
   float batteryVoltage = readSPIADCVoltage(BAT_ADC_PIN, dividerRatio);
