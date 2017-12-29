@@ -626,13 +626,13 @@ float readSPIADCVoltage(int channel=0, float ratio=1.0, int offset=0) {
 
 	DEBUG_PRINT("ADC channel: ");
 	DEBUG_PRINT(channel);
-	DEBUG_PRINT(" refValue: ");
+	DEBUG_PRINT(" refPin: ");
 	DEBUG_PRINT(refPinReading);
-  DEBUG_PRINT(" pinValue: ");
+  DEBUG_PRINT(" channelPin: ");
   DEBUG_PRINT(channelPinReading);
 	DEBUG_PRINT(" vccMv: ");
 	DEBUG_PRINT(vccMv);
-	DEBUG_PRINT(" pinMv: ");
+	DEBUG_PRINT(" channelMv: ");
 	DEBUG_PRINT(pinMv);
   DEBUG_PRINT(" readingMv: ");
   DEBUG_PRINTLN(readingMv);
