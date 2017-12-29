@@ -388,6 +388,9 @@ bool submit_reading(WeatherReading currentReading, bool disconnectAfterSubmissio
   if (!isnan(currentReading.temperature)) {
     strcat(outputUrl, "temp=");
     strcat(outputUrl, String(currentReading.temperature).c_str());
+    //
+		// strcat(outputUrl, "&batPercent=");
+	  // strcat(outputUrl, String(getBatteryPercent(currentReading.battery, currentReading.temperature)).c_str());
   }
 
   if (!isnan(currentReading.humidity)) {
@@ -866,6 +869,9 @@ bool takeSample() {
   //* ANEMOMETER BLOCK
   //******************************************/
   float anemometerMph = readAnemometer();
+
+	//float batteryPercent = getBatteryPercent(batteryVoltage, bmeTemp);
+	//Serial.printf("Battery Percent: %s\n", String(batteryPercent).c_str());
 
   //*****************/
   //* STORAGE BLOCK */
