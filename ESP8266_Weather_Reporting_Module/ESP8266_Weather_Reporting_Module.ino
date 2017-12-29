@@ -28,11 +28,15 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define DEBUG_PRINTLN(...)
 #endif
 
+#define SEND_RESULT_STREAM 0
+
 // WiFi
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 
+#if SEND_RESULT_STREAM
 #include <StreamString.h>
+#endif
 
 // Required for LIGHT_SLEEP_T delay mode
 extern "C" {
@@ -56,7 +60,6 @@ extern "C" {
 // #include "libraries/BME280_driver/bme280.h"
 // #endif
 
-#define SEND_RESULT_STREAM 0
 
 #define CALIBRATION_MODE 0
 #if CALIBRATION_MODE
