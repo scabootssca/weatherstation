@@ -214,3 +214,101 @@ float computeHeatIndex(float temperature, float percentHumidity, bool isFahrenhe
 
   return isFahrenheit ? hi : convertFtoC(hi);
 }
+
+
+float getBatteryPercent(float batteryMv, float tempC=25.0) {
+	float percent = 0;
+
+	int loadMa = 25; // 25 milliamps
+
+	int maxMv = 4200;
+	int minMv = 3000;
+
+	int curveTemps[3] = {-10, 0, 25};
+	float curves[3][3] = {{3600, 3500, 3100}, {3700, 3600, 3100}, {4000, 3500, 3200}};
+	float curvePercents[3][3] = {{98.0, 70.0, 1.00}, {98.0, 80.0, 10.0}, {98.0, 50.0, 20.0}};
+
+	float steps[3] = {curves[2][0], curves[2][1], curves[2][2]};
+	float percents[3] = {curvePercents[2][0], curvePercents[2][1], curvePercents[2][2]};
+
+	// For the current capacitity changes based off C
+	// int c = 1625;
+	// int cPercent = loadMa/c;
+	// float capacityCoef = 1.0;
+
+	// 1c, 0.5c, 0.2c
+	//int capacityTargets[3] = {2900, 3150, 3300};
+
+	// Curve values are for at 1c and we're drawing less than 0.2c so use that capacity
+	float capacityCoef = 1.0;//1.13793103448;
+
+	for (int i=0; i<3; i++) {
+		if (tempC < curveTemps[i]) {
+			Serial.print("Using ");
+			Serial.print(curveTemps[i]);
+			Serial.println("*C curve");
+
+			if (i == 0) {
+				// Use -10c
+				for (int valueIndex=0; valueIndex<3; valueIndex++) {
+					steps[valueIndex] = curves[i][valueIndex];
+					percents[valueIndex] = curvePercents[i][valueIndex];
+				}
+
+				break;
+			}
+
+			int range = curveTemps[i]-curveTemps[i-1];
+			float coef = tempC/range;
+
+			Serial.print("Curve Coef: ");
+			Serial.println(coef);
+
+			for (int valueIndex=0; valueIndex<3; valueIndex++) {
+				steps[valueIndex] = (curves[i][valueIndex] + ((curves[i][valueIndex]-curves[i-1][valueIndex]) * coef)) * capacityCoef;
+				percents[valueIndex] = (curvePercents[i][valueIndex] + ((curvePercents[i][valueIndex]-curvePercents[i-1][valueIndex]) * coef)) * capacityCoef;
+			}
+
+			break;
+		}
+	}
+
+	Serial.print("Steps: ");
+	Serial.print(maxMv);
+	Serial.print(", ");
+	Serial.print(steps[0]);
+	Serial.print(", ");
+	Serial.print(steps[1]);
+	Serial.print(", ");
+	Serial.print(steps[2]);
+	Serial.print(", ");
+	Serial.println(minMv);
+
+	Serial.print("Percents: ");
+	Serial.print("100, ");
+	Serial.print(percents[0]);
+	Serial.print(", ");
+	Serial.print(percents[1]);
+	Serial.print(", ");
+	Serial.print(percents[2]);
+	Serial.println(", 0");
+
+	if (batteryMv > maxMv) {
+		Serial.println("Using target mavMv");
+		percent = 100;
+	} else if (batteryMv > steps[0]) {
+		Serial.println("Using target 0");
+		percent = percents[0] + ((100-percents[0])*((maxMv-batteryMv)/(maxMv-steps[0])));
+	} else if (batteryMv > steps[1]) {
+		Serial.println("Using target 1");
+		percent = percents[1] + ((percents[0]-percents[1])*((steps[0]-batteryMv)/(steps[0]-steps[1])));
+	} else if (batteryMv > steps[2]) {
+		Serial.println("Using target 2");
+		percent = percents[2] + ((percents[1]-percents[2])*((steps[1]-batteryMv)/(steps[1]-steps[2])));
+	} else {
+		Serial.println("Using target minMv");
+		percent = percents[2] * ((batteryMv-minMv)/(steps[2]-minMv));
+	}
+
+	return percent;
+}
