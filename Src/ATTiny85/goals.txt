@@ -1,0 +1,47 @@
+*Counts Various Interrupts
+
+*Every 2K ms wake esp to take sample which will then store it and sleep
+
+Flow:
+void loop() {
+  wakeESP();
+
+  espTakeSample();
+  response = getEspResponse(); // This'll wait for a reply a max time
+
+  if (!response) {
+    return; // <-- will we need this?
+  }
+
+  // Esp now waits for reply back
+
+  readAnemometerInterrupts();
+  readRainInterrupts();
+
+  storeSample();
+
+  // Store the accumulator if our samples are full
+  if (samplesFull) {
+    storeSamples();
+  }
+
+
+  // Submit now if samples
+  for (sampleData in storedData) {
+    espCommandSubmit(sampleData);
+    success = getEspResponse();  // This'll wait for a reply a max time
+
+    // Esp now waits for reply back
+
+    if (success) {
+      clearSample();
+    } else {
+      storeSampleInEEPROM();
+    }
+  }
+
+  // Put it to sleep again
+  commandESPSleep();
+
+  delay(2000);
+}
