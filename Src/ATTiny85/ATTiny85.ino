@@ -29,13 +29,15 @@ SoftwareSerial Serial(RX_PIN, TX_PIN);
 // Mcp pins
 #define ONEWIRE_RX_PIN 0
 #define ONEWIRE_TX_PIN 1
+#define ESP_RESET_PIN 2
 
-#define ANEMOMETER_PIN_MCP 6
-#define LED_PIN_MCP 7
+#define RAIN_PIN 6
+#define ANEMOMETER_PIN 7
+
 
 // Defines
 #define SAMPLES_PER_READING 150
-#define SAMPLE_INTERVAL 2000
+#define SAMPLE_INTERVAL 10000
 
 // Anemometer
 #define ANEMOMETER_CALIBRATION_COEF 0.09739260404185239 // 10.2677201193868 = samples per 1mph
@@ -45,30 +47,33 @@ SoftwareSerial Serial(RX_PIN, TX_PIN);
 SampleAccumulator sampleAccumulator;
 unsigned short numSamples = 0;
 
-unsigned int anemometerPulseCount = 0;
+// Pulse counts
+uint8_t anemometerPulseCount = 0;
+uint8_t rainPulseCount = 0;
 
-//unsigned long lastInterruptMillis = 0;
+// Interrupt and reading timings
+unsigned long lastInterruptMillis = 0;
+unsigned long lastInterruptMillis1 = 0;
+unsigned long lastTickMillis = 0;
 unsigned long lastSampleMillis = 0;
 unsigned long lastAnemometerReadingMillis = 0;
 
-volatile unsigned long lastInterruptMillis = 0;
 volatile bool hasInterrupt = false;
-
-int i2cRequestCount = 0;
-byte recvByte = 0;
+bool espResetting = false;
 
 // IO Expander
 TinyMCP23008 mcp;
+
 #include "McpComn.h"
 
-void espWake() {
+void espReset() {
   //PORTB ^= (1 << ESP_RESET_PIN);
-  mcp.digitalWrite(LED_PIN_MCP, HIGH);
-}
-
-void espSleep() {
-  //PORTB ^= (1 << ESP_RESET_PIN);
-  mcp.digitalWrite(LED_PIN_MCP, LOW);
+  espResetting = true;
+  mcp.digitalWrite(ESP_RESET_PIN, LOW);
+  delay(10);
+  mcp.digitalWrite(ESP_RESET_PIN, HIGH);
+  delay(10);
+  espResetting = false;
 }
 
 void espGetSample() {
@@ -104,9 +109,9 @@ float readAnemometer() {
 
 ISR(PCINT0_vect) {
   // If the current state of the pin is high then it's an interrupt since we only want rising edges
-  if ((PINB>>INTERRUPT_PIN)&1) {
-    hasInterrupt = true;
-  }
+  //if ((PINB>>INTERRUPT_PIN)&1) {
+  hasInterrupt = true;
+  //}
 }
 
 static inline void initInterrupt(void) {
@@ -152,6 +157,9 @@ void setup() {
   // Init serial
   Serial.begin(2400);
 
+  Serial.println();
+  Serial.println("Initilizing ATtiny85");
+
   // // Init i2c
   TinyWireM.begin();
 
@@ -170,34 +178,70 @@ void setup() {
   mcp.enableInterrupt(ONEWIRE_RX_PIN, FALLING); // This'll interrupt when the pin goes low for a request
 
   // Anemometer pin
-  mcp.pinMode(ANEMOMETER_PIN_MCP, INPUT);
-  mcp.enableInterrupt(ANEMOMETER_PIN_MCP, RISING);
+  mcp.pinMode(ANEMOMETER_PIN, INPUT);
+  mcp.enableInterrupt(ANEMOMETER_PIN, RISING);
 
-  // Led status
-  mcp.pinMode(LED_PIN_MCP, OUTPUT);
+  // Rain pin
+  mcp.pinMode(RAIN_PIN, INPUT);
+  mcp.enableInterrupt(RAIN_PIN, RISING);
+
+  // Esp Reset
+  mcp.pinMode(ESP_RESET_PIN, OUTPUT);
+  mcp.digitalWrite(ESP_RESET_PIN, HIGH);
 }
 
 void loop() {
+  // if (!hasInterrupt && (PINB>>INTERRUPT_PIN)&1) {
+  //   // Seems it got stuck high
+  //   //Serial.println("Interrupt stuck, clearing");
+  //   hasInterrupt = true;
+  // }
+
   if (hasInterrupt) {
     cli();
-    uint8_t interruptMask = mcp.readInterrupts();
     hasInterrupt = false;
     sei();
 
-    if ((interruptMask>>ANEMOMETER_PIN_MCP)&1) {
+    uint8_t interruptMask = mcp.readInterrupts();
+
+    if ((interruptMask>>ANEMOMETER_PIN)&1) {
       if (millis()-lastInterruptMillis > 100) {
         lastInterruptMillis = millis();
         anemometerPulseCount++;
-        Serial.print("Pulse #: ");
+        Serial.print("Wind Pulse #: ");
         Serial.println(anemometerPulseCount);
-        //Serial.println("Handled Interrupt: ANEMOMETER_PIN_MCP");
+        //Serial.println("Handled Interrupt: ANEMOMETER_PIN");
       }
     }
 
-    if ((interruptMask>>ONEWIRE_RX_PIN)&1) {
-      sendResponse(anemometerPulseCount);
-      anemometerPulseCount = 0;
-      //Serial.println("Handled Interrupt: ONEWIRE_RX_PIN");
+    if ((interruptMask>>RAIN_PIN)&1) {
+      if (millis()-lastInterruptMillis1 > 100) {
+        lastInterruptMillis1 = millis();
+        rainPulseCount++;
+        Serial.print("Rain Pulse #: ");
+        Serial.println(rainPulseCount);
+        //Serial.println("Handled Interrupt: ANEMOMETER_PIN");
+      }
+    }
+
+    if (!espResetting) {
+      if ((interruptMask>>ONEWIRE_RX_PIN)&1) {
+        // response = [rainPulseCount][anemometerPulseCount]
+        uint16_t response = rainPulseCount;
+        response <<= 8;
+        response |= anemometerPulseCount;
+
+        sendResponse(response);
+
+        Serial.print("Sent Rain: ");
+        Serial.println(rainPulseCount);
+        Serial.print("Sent Wind: ");
+        Serial.println(anemometerPulseCount);
+
+        anemometerPulseCount = 0;
+        rainPulseCount = 0;
+        //Serial.println("Handled Interrupt: ONEWIRE_RX_PIN");
+      }
     }
 
     // Serial.print("Interrupts: ");
@@ -214,16 +258,23 @@ void loop() {
   // }
   }
 
-  if (millis()-lastSampleMillis > SAMPLE_INTERVAL) {
-    lastSampleMillis = millis();
+  if (millis()-lastTickMillis > 1000) {
+    lastTickMillis = millis();
 
     //PORTB ^= (1 << PB3);
-    Serial.print("ATtiny Tick: (");
-    Serial.print(anemometerPulseCount);
-    Serial.println(")");
+    Serial.println("ATtiny Tick");
+    // Serial.print(anemometerPulseCount);
+    // Serial.println(")");
+
+    //espReset();
   }
 
-  //   espWake(); // Drive ESP_RESET_PIN low
+  if (millis()-lastSampleMillis > 10000) {
+    lastSampleMillis = millis();
+    Serial.println("Resetting ESP");
+    espReset();
+  }
+
   //   // The ESP will wake and then take a sample and wait for this as the i2c master
   //   // It'll send the data and we'll store it in the accumulator
   //
@@ -242,5 +293,4 @@ void loop() {
   //   }
   //
   //   espSleep();
-  // }
 }
