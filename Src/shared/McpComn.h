@@ -28,10 +28,18 @@
 //   return getRxState();
 // }
 
-#define CLOCK_HOLD_TIME 30
-#define CLOCK_EDGE_TIME 10
+#ifdef DEBUG
+#define DEBUG_PRINT(...) Serial.print( __VA_ARGS__ )
+#define DEBUG_PRINTLN(...) Serial.println( __VA_ARGS__ )
+#else
+#define DEBUG_PRINT(...)
+#define DEBUG_PRINTLN(...)
+#endif
 
-#define ACK_TIMEOUT 200
+#define CLOCK_HOLD_TIME 6
+#define CLOCK_EDGE_TIME 1
+
+#define ACK_TIMEOUT 500
 #define MAX_REQUEST_ATTEMPTS 5
 
 
@@ -60,16 +68,16 @@ bool waitForRxState(bool state=false) {
 bool clockOutBit(bool bit) {
   // Wait for master to go low or break
   if (!waitForRxState(LOW)) {
-    Serial.println("... Timed out");
+    DEBUG_PRINTLN("... Timed out (LOW)");
     return false;
   }
 
   setTxState(bit);
-  //Serial.print(bit);
+  DEBUG_PRINT(bit);
 
   // It should go high again before the next pulse
   if (!waitForRxState(HIGH)) {
-    Serial.println("... Timed out");
+    DEBUG_PRINTLN("... Timed out (HIGH)");
     return false;
   }
 
@@ -81,17 +89,19 @@ bool getClockedBit(int extraHoldMs=0) {
   setTxState(LOW);
   delay(CLOCK_HOLD_TIME);
   bool result = getRxState();
+  DEBUG_PRINT(result);
   setTxState(HIGH);
   delay(CLOCK_HOLD_TIME);
   return result;
 }
 
-bool getAck() {
+bool initTransfer() {
   // Tell it we want data
   setTxState(LOW);
 
   bool gotAck = false;
 
+  // Wait for it to go high
   for (int i=0; i<ACK_TIMEOUT; i++) {
     if (getRxState()) {
       gotAck = true;
@@ -101,6 +111,7 @@ bool getAck() {
     delay(1);
   }
 
+  // Then we go high
   setTxState(HIGH);
 
   delay(CLOCK_HOLD_TIME);
@@ -109,25 +120,26 @@ bool getAck() {
 }
 
 
-void sendResponse(int data, int dataLen=16) {
-  // The high ACK
-  //Serial.print("Sending ACK: ");
+void sendResponse(uint16_t data, int dataLen=16) {
+  // Send that transfer is started and we're listening as high ACK bit
+  DEBUG_PRINT("Got request sending ACK: ");
   if (!clockOutBit(1)) {
+    DEBUG_PRINTLN(" Failed (No Response)");
     return;
   }
-  //Serial.println();
+  DEBUG_PRINTLN(" Success!");
 
   // CRC
-  //Serial.print("Sending CRC: ");
+  DEBUG_PRINT("Sending CRC (");
+  DEBUG_PRINT(data%2);
+  DEBUG_PRINT("): ");
   if (!clockOutBit(data%2)) {
+    DEBUG_PRINTLN(" Failed!");
     return;
   }
-  //Serial.println();
+  DEBUG_PRINTLN(" Success!");
 
-  // /* This'll send the LSB first */
-  // Serial.print("Sending data (");
-  // Serial.print(data);
-  // Serial.print("): ");
+  DEBUG_PRINT("Sending bits: ");
 
   // Send each bit when the master goes low
   for (int i=0; i<dataLen; i++) {
@@ -136,42 +148,63 @@ void sendResponse(int data, int dataLen=16) {
     }
   }
 
+  DEBUG_PRINTLN();
+
   // Done
   setTxState(LOW);
 
-  Serial.print("Sent data: ");
+  Serial.print("Sent data Sucessfully: ");
   Serial.println(data);
-  //Serial.println("");
 }
 
 
-int sendRequest(int dataLen=16) {
-  int result = 0;
+uint16_t sendRequest(int dataLen=16) {
+  uint16_t result = 0;
+  bool success = false;
 
   for (int attemptNum=0; attemptNum < MAX_REQUEST_ATTEMPTS; attemptNum++) {
-    if (!getAck()) {
-      Serial.println("No ACK!");
+    DEBUG_PRINT("Getting ACK: ");
+
+    if (!initTransfer()) {
+      DEBUG_PRINTLN("No ACK!");
       continue;
-      //return result;
     }
 
+    DEBUG_PRINTLN();
+
+    // Get the crc of the reply data
     bool crc = getClockedBit();
+
+    DEBUG_PRINT("Got CRC: ");
+    DEBUG_PRINTLN(crc);
+
+    DEBUG_PRINT("Getting bits: ");
 
     // It'll now send its bits
     for (int i=0; i<dataLen; i++) {
       result |= getClockedBit()<<i;
     }
 
+    DEBUG_PRINTLN();
+
     // High again till we pull low again
     setTxState(HIGH);
 
     if (result%2 != crc) {
-      Serial.println("CRC failed!");
+      DEBUG_PRINTLN("CRC failed!");
       continue;
     } else {
-      Serial.println("CRC passed!");
+      DEBUG_PRINTLN("CRC passed!");
+      success = true;
       break;
     }
+  }
+
+  if (success) {
+    Serial.print("Request Successful!: ");
+    Serial.println(result);
+  } else {
+    Serial.println("Request Failed!");
   }
 
   return result;
