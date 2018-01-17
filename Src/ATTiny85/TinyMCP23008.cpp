@@ -167,15 +167,18 @@ void TinyMCP23008::setInterruptOutPinMode(uint8_t mode) {
   // Set the interrupt pin open-drain
   uint8_t registerVal = read8(MCP23008_IOCON);
 
+  #define ODR 2
+  #define INTPOL 1
+
   if (mode == MCP23008_INT_OUT_DRAIN) {
-    registerVal |= (1 << 2); // INTPOL = 1 (drain)
+    registerVal |= (1 << ODR); // ODR: This bit configures the INT pin as an open-drain output.
   } else {
-    registerVal &= ~(1 << 2); // INTPOL = 0 (active driver)
+    registerVal &= ~(1 << ODR); // INTPOL = 0 (active driver)
 
     if (mode == MCP23008_INT_OUT_HIGH) {
-      registerVal |= (1 << 1);
+      registerVal |= (1 << INTPOL); // 1 = Active-high.
     } else {
-      registerVal &= ~(1 << 1);
+      registerVal &= ~(1 << INTPOL); // 0 = Active-low.
     }
   }
 
@@ -322,6 +325,10 @@ void TinyMCP23008::disableInterrupt(uint8_t pin) {
   registerVal = read8(MCP23008_GPINTEN);
   registerVal &= ~(1 << pin);
   write8(MCP23008_GPINTEN, registerVal);
+}
+
+void TinyMCP23008::disableAllInterrupts() {
+  write8(MCP23008_GPINTEN, 0);
 }
 
 uint8_t TinyMCP23008::read8(uint8_t addr) {

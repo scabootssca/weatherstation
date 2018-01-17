@@ -11,8 +11,8 @@ struct WeatherReading {
 
   bool populated = false;
 };
-
-//#include "ATTiny85/helpers.h"
+//
+// #include "ATTiny85/helpers.h"
 struct WeatherReadingAccumulator {
 	uint32_t timestamp;
 	double temperature = 0;

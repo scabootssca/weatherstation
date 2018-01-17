@@ -33,6 +33,7 @@ public:
   uint8_t readInterrupts();
   void enableInterrupt(uint8_t pin, int mode=CHANGE);
   void disableInterrupt(uint8_t pin);
+  void disableAllInterrupts();
 
  private:
   uint8_t i2caddr;
