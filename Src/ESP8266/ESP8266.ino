@@ -90,8 +90,6 @@ int CALIB_windVaneMin = 1024;
 #define SCL_PIN D1
 #define SDA_PIN D3
 
-//#define AWAKE_PIN D8
-
 // SPI Pins
 // D5 Clock
 // D6 MOSI
@@ -99,10 +97,14 @@ int CALIB_windVaneMin = 1024;
 
 // Serial connection to ATtiny
 #include <SoftwareSerial.h>
-#define SW_SERIAL_TX_PIN D8
+#define SW_SERIAL_TX_PIN -1
 #define SW_SERIAL_RX_PIN D2
 SoftwareSerial ATtinySerial(SW_SERIAL_RX_PIN, SW_SERIAL_TX_PIN);
 bool ATtinyNewline = true;
+
+char attinyReplyBuffer[11]; // 1 + 4 + 1 + 4 + 1 (~ Int1 ! Int2 \n)
+short attinyReplyBufferIndex = 0;
+bool attinyReplyBuffering = false;
 
 // IO Expander Pin Assignments
 #define ERROR_LED_PIN 0
@@ -111,6 +113,7 @@ bool ATtinyNewline = true;
 #define REFV_ENABLE_PIN 2
 #define SOLAR_ENABLE_PIN 3
 #define BAT_DIV_ENABLE_PIN 4
+#define ATTINY_DATA_REQUEST_PIN 6
 //#define REFV_ENABLE_PIN 5
 
 #define ADC_CS_PIN 7
@@ -173,6 +176,62 @@ volatile unsigned long anemometerSampleSum = 0;
 volatile unsigned int anemometerSampleCount = 0;
 
 volatile bool hasInterrupt = false;
+
+bool recv_attiny_serial() {
+	// Print attiny serial messages
+	while (ATtinySerial.available() > 0) {
+		uint8_t rxByte = ATtinySerial.read();
+
+		if (ATtinyNewline) {
+			ATtinyNewline = false;
+			Serial.write("[ATtiny]");
+		}
+
+		if (rxByte == 126) {
+			attinyReplyBufferIndex = 0;
+			attinyReplyBuffering = true;
+		} else if (rxByte == 10) {
+			ATtinyNewline = true;
+			attinyReplyBuffering = false;
+		}
+
+		if (attinyReplyBuffering && attinyReplyBufferIndex < 5) {
+			attinyReplyBuffer[attinyReplyBufferIndex++] = rxByte;
+		}
+
+		// Print it if it's not a reply to us
+		if (!attinyReplyBuffering) {
+			Serial.write(rxByte);
+		}
+
+		// For printing the ord values
+		// Serial.print(rxByte, DEC);
+		// Serial.print(" ");
+		// Serial.println((char)rxByte);
+	}
+}
+
+bool wait_attiny_data(int timeoutMs = 50) {
+	attinyReplyBuffering = true;
+	int totalDelayMs = 0;
+
+	do {
+		recv_attiny_serial();
+		delay(1);
+		totalDelayMs++;
+
+		if (totalDelayMs >= timeoutMs) {
+			break;
+		}
+	} while (attinyReplyBuffering);
+
+	// If we timed out
+	if (totalDelayMs >= timeoutMs) {
+		return false;
+	}
+
+	return true;
+}
 
 bool connectToWiFi() {
 	// If we're connected then return
@@ -781,32 +840,32 @@ int readWindVane() {
   return windDegrees;
 }
 
-float readAnemometer() {
-  int millisNow = millis();
-
-  // Get how many samples we had
-  noInterrupts();
-  int numTimelyAnemometerSamples = anemometerPulseCount;
-  anemometerPulseCount = 0;
-  interrupts();
-
-	// mph = revolutions * measurementDuration * calibrationData
-	float anemometerMph = (numTimelyAnemometerSamples * 0.5) * (60000.0 / (millisNow-lastAnemometerReadingMillis)) * ANEMOMETER_CALIBRATION_COEF;
-
-	#if DEBUG >= 2
-	DEBUG_PRINT("Anemometer: ");
-  DEBUG_PRINT(numTimelyAnemometerSamples);
-  DEBUG_PRINT(" Samples in last ");
-  DEBUG_PRINT((millisNow-lastAnemometerReadingMillis)/1000.0);
-  DEBUG_PRINT(" second ");
-  DEBUG_PRINT(anemometerMph);
-  DEBUG_PRINTLN(" MPH");
-	#endif
-
-  lastAnemometerReadingMillis = millisNow;
-
-	return anemometerMph;
-}
+// float readAnemometer() {
+//   int millisNow = millis();
+//
+//   // Get how many samples we had
+//   noInterrupts();
+//   int numTimelyAnemometerSamples = anemometerPulseCount;
+//   anemometerPulseCount = 0;
+//   interrupts();
+//
+// 	// mph = revolutions * measurementDuration * calibrationData
+// 	float anemometerMph = (numTimelyAnemometerSamples * 0.5) * (60000.0 / (millisNow-lastAnemometerReadingMillis)) * ANEMOMETER_CALIBRATION_COEF;
+//
+// 	#if DEBUG >= 2
+// 	DEBUG_PRINT("Anemometer: ");
+//   DEBUG_PRINT(numTimelyAnemometerSamples);
+//   DEBUG_PRINT(" Samples in last ");
+//   DEBUG_PRINT((millisNow-lastAnemometerReadingMillis)/1000.0);
+//   DEBUG_PRINT(" second ");
+//   DEBUG_PRINT(anemometerMph);
+//   DEBUG_PRINTLN(" MPH");
+// 	#endif
+//
+//   lastAnemometerReadingMillis = millisNow;
+//
+// 	return anemometerMph;
+// }
 
 void ICACHE_RAM_ATTR do_mcp_isr() {
 	hasInterrupt = true;
@@ -850,15 +909,15 @@ void setup() {
 	// SoftwareSerial
 	ATtinySerial.begin(2400);
 
-	//pinMode(AWAKE_PIN, OUTPUT);
-	//digitalWrite(AWAKE_PIN, HIGH);
-
 	// Wire.begin(SDA, SCL);
 	Wire.begin(SDA_PIN, SCL_PIN);
 	//Wire.setClockStretchLimit(1600); // Maybe for attiny
 
   // mcp23008 begin
   mcp.begin();      // use default address 0
+
+	// We'll have this as input until we need a reading so we don't interfere with attiny programming
+	mcp.pinMode(ATTINY_DATA_REQUEST_PIN, INPUT);
 
   // Set the interrupt pin mode
   //mcp.setInterruptOutPinMode(MCP23008_INT_OUT_HIGH);
@@ -1042,12 +1101,69 @@ bool takeSample() {
   int windDegrees = readWindVane();
 
   //******************************************/
-  //* ANEMOMETER BLOCK
+  //* ATTINY INTERRUPT READINGS
   //******************************************/
-  float anemometerMph = readAnemometer();
+	float anemometerMph = 0;
+
+	// Get the reading from the ATtiny
+	mcp.pinMode(ATTINY_DATA_REQUEST_PIN, OUTPUT);
+	mcp.digitalWrite(ATTINY_DATA_REQUEST_PIN, HIGH);
+	delay(1);
+	mcp.digitalWrite(ATTINY_DATA_REQUEST_PIN, LOW);
+	mcp.pinMode(ATTINY_DATA_REQUEST_PIN, INPUT);
+
+	bool recvSuccess = wait_attiny_data();
+
+	if (recvSuccess) {
+		// Get how many samples we had
+		int numTimelyAnemometerSamples = (int)attinyReplyBuffer[3];
+
+		// mph = revolutions * measurementDuration * calibrationData
+		unsigned long millisNow = millis();
+		anemometerMph = (numTimelyAnemometerSamples * 0.5) * (60000.0 / (millisNow-lastAnemometerReadingMillis)) * ANEMOMETER_CALIBRATION_COEF;
+
+		#if DEBUG >= 2
+		DEBUG_PRINT("Anemometer: ");
+	  DEBUG_PRINT(numTimelyAnemometerSamples);
+	  DEBUG_PRINT(" Samples in last ");
+	  DEBUG_PRINT((millisNow-lastAnemometerReadingMillis)/1000.0);
+	  DEBUG_PRINT(" second ");
+	  DEBUG_PRINT(anemometerMph);
+	  DEBUG_PRINTLN(" MPH");
+		#endif
+
+		lastAnemometerReadingMillis = millisNow;
+		// Serial.print("Recieved from ATtiny Raw: ");
+    //
+		// for (int i=0;i<attinyReplyBufferIndex;i++) {
+		// 	for (int bit=7;bit>=0;bit--) {
+		// 		Serial.print((attinyReplyBuffer[i]>>bit)&1);
+		// 	}
+    //
+		// 	Serial.print(" ");
+		// }
+    //
+		// Serial.println();
+    //
+		// Serial.print("Nice:  ");
+		// Serial.println(attinyReplyBuffer);
+    //
+    //
+    //
+		// Serial.print("Parsed: ");
+		// Serial.print((int)attinyReplyBuffer[1]);
+		// Serial.print(" & ");
+		// Serial.print((int)attinyReplyBuffer[3]);
+		// Serial.println();
+	}
+
+  //float anemometerMph = readAnemometer();
 
 	//float batteryPercent = getBatteryPercent(batteryVoltage, bmeTemp);
 	//Serial.printf("Battery Percent: %s\n", String(batteryPercent).c_str());
+
+
+
 
   //*****************/
   //* STORAGE BLOCK */
@@ -1138,6 +1254,10 @@ void storeAveragedSamples() {
 // 	delay(ms + 10);
 // }
 
+
+
+
+
 void loop() {
 	/*******************************************************\
 	|*
@@ -1173,28 +1293,11 @@ void loop() {
 	|*
 	|*******************************************************/
 	#if COMPANION_MODE
-	// Print attiny serial messages
-	while (ATtinySerial.available() > 0) {
-		uint8_t rxByte = ATtinySerial.read();
-
-		if (ATtinyNewline) {
-			ATtinyNewline = false;
-			Serial.write("[ATtiny]");
-		}
-
-		Serial.write(rxByte);
-
-		if (rxByte == 10) {
-			ATtinyNewline = true;
-		}
-	}
+	// Print what it prints through us
+	recv_attiny_serial();
 
 	if (millis()-lastSampleMillis > SAMPLE_INTERVAL) {
-		//mcp.digitalWrite(ESP_AWAKE_PIN, HIGH);
 		lastSampleMillis = millis();
-		//mcp.digitalWrite(ESP_AWAKE_PIN, HIGH);
-		//digitalWrite(AWAKE_PIN, HIGH);
-		delay(1);
 
 		Serial.println("Taking Sample");
 
@@ -1205,21 +1308,6 @@ void loop() {
 		// Take a weather reading sample
 		takeSample();
 
-		// // response = [rainPulseCount][anemometerPulseCount]
-		// uint16_t result = sendRequest();
-		// uint8_t anemometerPulseCount = result & 0b0000000011111111; // We only want the lower 8 bits
-		// uint8_t rainPulseCount = result>>8; // Only the upper 8
-
-		// // If no ACK then reset the ATtiny
-    //
-		// Serial.print("Anemometer Count: ");
-		// Serial.println(anemometerPulseCount);
-		// Serial.print("Rain Count: ");
-		// Serial.println(rainPulseCount);
-
-		// Try this
-		//ATtinySerial.write("p6");
-
 		// Turn the light off again
 		mcp.digitalWrite(ERROR_LED_PIN, LOW);
 		mcp.digitalWrite(OK_LED_PIN, LOW);
@@ -1227,9 +1315,6 @@ void loop() {
 		DEBUG_PRINT("Free Heap: ");
 		DEBUG_PRINTLN(ESP.getFreeHeap(), DEC);
 		DEBUG_PRINTLN("Sleeping Now.");
-
-		//mcp.digitalWrite(ESP_AWAKE_PIN, LOW);
-		//digitalWrite(AWAKE_PIN, LOW);
 	}
 	#endif
 
