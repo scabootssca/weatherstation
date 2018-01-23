@@ -11,6 +11,7 @@ struct WeatherReading {
 
   bool populated = false;
 };
+
 //
 // #include "ATTiny85/helpers.h"
 struct WeatherReadingAccumulator {
@@ -22,6 +23,7 @@ struct WeatherReadingAccumulator {
 	double windSpeed = 0;
 	double windDirection = 0;
 
+	int numSamples = 0;
 	int numBatterySamples = 0;
 
 	bool populated = false;
@@ -139,6 +141,7 @@ void zeroWeatherReading(WeatherReadingAccumulator *reading) {
 	reading->windSpeed = 0;
 	reading->windDirection = 0;
 	reading->numBatterySamples = 0;
+	reading->numSamples = 0;
   reading->populated = false;
 }
 
@@ -151,6 +154,31 @@ void copyWeatherReading(WeatherReading src, WeatherReading dest) {
 	dest.windSpeed = src.windSpeed;
 	dest.windDirection = src.windDirection;
 	dest.populated = src.populated;
+}
+
+void store_accumulator(WeatherReading *dest, WeatherReadingAccumulator src) {
+	dest->timestamp = src.timestamp/src.numSamples;
+	dest->temperature = src.temperature/src.numSamples;
+	dest->humidity = src.humidity/src.numSamples;
+	dest->pressure = src.pressure/src.numSamples;
+	dest->battery = src.battery/src.numBatterySamples;
+	dest->windSpeed = src.windSpeed/src.numSamples;
+	dest->windDirection = src.windDirection/src.numSamples;
+	dest->populated = true;
+}
+
+WeatherReading get_averaged_accumulator(WeatherReadingAccumulator src) {
+	WeatherReading dest;
+
+	dest.timestamp = src.timestamp/src.numSamples;
+	dest.temperature = src.temperature/src.numSamples;
+	dest.humidity = src.humidity/src.numSamples;
+	dest.pressure = src.pressure/src.numSamples;
+	dest.battery = src.battery/src.numBatterySamples;
+	dest.windSpeed = src.windSpeed/src.numSamples;
+	dest.windDirection = src.windDirection/src.numSamples;
+
+	return dest;
 }
 
 void waitMs(int delayMs) {
