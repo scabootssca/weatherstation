@@ -7,7 +7,10 @@ On Esp:
   long: 4
 */
 //
-// MSBFIRST
+#define SRAM_MODE_READ 0
+#define SRAM_MODE_WRITE 1
+#define SRAM_MAX_ADDRESS 0x1FFFF
+
 /***************************
 * SRAM memory layout
 ***************************/
@@ -27,10 +30,7 @@ On Esp:
 // Readings will directly follow in sram
 #define SRAM_ADDR_READINGS SRAM_ADDR_ACCUMULATOR+SRAM_SIZE_ACCUMULATOR
 #define SRAM_SIZE_READINGS sizeof(WeatherReading)
-
-#define SRAM_MODE_READ 0
-#define SRAM_MODE_WRITE 1
-#define SRAM_MAX_ADDRESS 0xFFFF
+#define SRAM_MAX_READINGS int((SRAM_MAX_ADDRESS-SRAM_ADDR_READINGS)/SRAM_SIZE_READINGS)
 
 bool sram_start(bool mode, int address, int size) {
   // Only 1mbit

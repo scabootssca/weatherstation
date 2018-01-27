@@ -13,7 +13,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
 WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#define CLEAN_START 1 // This will mark SRAM as unpopulated and update rtc to compile time
+#define CLEAN_START 0 // This will mark SRAM as unpopulated and update rtc to compile time
 
 #define DEBUG 3
 
@@ -69,7 +69,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define SAMPLES_PER_READING 5//READING_INTERVAL/SAMPLE_INTERVAL // How many samples to average for a reading 300000/2000 = 30 for one every 2 seconds
 #define BATTERY_SAMPLE_MODULO 20 // Every X samples check the battery
 
-#define MAX_READING_STORAGE 576 // How many readings to store in memory; 288 with 300000 ms samples (5 min) is 24 hours; 576 = 48 hours
+// #define MAX_READING_STORAGE 576 // How many readings to store in memory; 288 with 300000 ms samples (5 min) is 24 hours; 576 = 48 hours
 #define READING_SUBMIT_INTERVAL 1 // How many to have before attempting to submit
 #define MAX_FAILED_SUBMITS 3
 
@@ -184,6 +184,9 @@ void setup() {
     Serial.println("BME280 sensor is not detected at i2caddr 0x76; check wiring.");
   }
 
+  Serial.print("Max Readings Storable: ");
+  Serial.println(SRAM_MAX_READINGS);
+
   #if CLEAN_START
   sram_set_populated(false);
   #endif
@@ -193,6 +196,7 @@ void setup() {
     Serial.println("Previously Populated");
 
     sram_read_accumulator(&sampleAccumulator);
+    printWeatherReading(sampleAccumulator);
     sram_read(&weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
     sram_read(&weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
 
@@ -238,7 +242,7 @@ void loop() {
     printWeatherReading(currentReading);
 
     // For index overflow; back to beginning
-    if (weatherReadingWriteIndex > MAX_READING_STORAGE) {
+    if (weatherReadingWriteIndex > SRAM_MAX_READINGS) {
       weatherReadingWriteIndex = 0;
     }
 
@@ -275,7 +279,7 @@ void submit_stored_readings() {
     if (success) {
       weatherReadingReadIndex++;
 
-      if (weatherReadingReadIndex >= MAX_READING_STORAGE) {
+      if (weatherReadingReadIndex >= SRAM_MAX_READINGS) {
         weatherReadingReadIndex = 0;
       }
 
