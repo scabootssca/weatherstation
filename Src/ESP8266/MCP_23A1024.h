@@ -8,24 +8,25 @@ On Esp:
 */
 //
 // MSBFIRST
-//
-// SRAM address and sizes
+/***************************
+* SRAM memory layout
+***************************/
+// Hopefully it won't randomly be this
 #define SRAM_ADDR_POPULATED 0
 #define SRAM_SIZE_POPULATED 1
 
-// Ongoing accumulator
-#define SRAM_ADDR_ACCUMULATOR 1
-#define SRAM_SIZE_ACCUMULATOR 72
-
-// Readings in order
-#define SRAM_ADDR_READINGS_READ_INDEX 90
+// Reading Buffer Pointers
+#define SRAM_ADDR_READINGS_READ_INDEX 1
 #define SRAM_SIZE_READINGS_READ_INDEX 4
-
-#define SRAM_ADDR_READINGS_WRITE_INDEX 94
+#define SRAM_ADDR_READINGS_WRITE_INDEX 5
 #define SRAM_SIZE_READINGS_WRITE_INDEX 4
 
-#define SRAM_ADDR_READINGS 100
-#define SRAM_SIZE_READINGS 32
+// Ongoing accumulator
+#define SRAM_ADDR_ACCUMULATOR 10
+#define SRAM_SIZE_ACCUMULATOR sizeof(WeatherReadingAccumulator)
+// Readings will directly follow in sram
+#define SRAM_ADDR_READINGS SRAM_ADDR_ACCUMULATOR+SRAM_SIZE_ACCUMULATOR
+#define SRAM_SIZE_READINGS sizeof(WeatherReading)
 
 #define SRAM_MODE_READ 0
 #define SRAM_MODE_WRITE 1
@@ -42,6 +43,7 @@ void sram_start(bool mode, int address, int size) {
   delay(1);
 
   SPI.transfer((mode == SRAM_MODE_READ)?0b00000011:0b00000010); // Read cmd: Write cmd
+
   SPI.transfer(address >> 16);
   SPI.transfer(address >> 8);
   SPI.transfer(address);
@@ -53,32 +55,63 @@ void sram_end() {
 }
 
 uint8_t sram_transfer(uint8_t value = 0) {
+  // Serial.print("SRAM Transfer (uint8_t): ");
+  // Serial.println(value);
   return SPI.transfer(value);
 }
 
 uint32_t sram_transfer(uint32_t value = 0) {
+  // Serial.print("SRAM Transfer (uint32_t): ");
+  // Serial.println(value);
   uint8_t *outBytes = reinterpret_cast<uint8_t*>(&value);
-  uint8_t inBytes[4];
+  uint8_t inBytes[sizeof(uint32_t)];
 
-  SPI.transferBytes(outBytes, inBytes, 4);
+  SPI.transferBytes(outBytes, inBytes, sizeof(uint32_t));
 
   return *reinterpret_cast<uint32_t*>(&inBytes);
 }
 
 double sram_transfer(double value = 0) {
+  // Serial.print("SRAM Transfer (double)(");
+  // Serial.print(sizeof(double));
+  // Serial.print("): ");
+  // Serial.println(value);
   uint8_t *outBytes = reinterpret_cast<uint8_t*>(&value);
-  uint8_t inBytes[8];
+  uint8_t inBytes[sizeof(double)];
 
-  SPI.transferBytes(outBytes, inBytes, 8);
+  // Serial.print("Out: ");
+  // for (int i=0; i<sizeof(double);i++){
+  //   for (int j=0;j<8;j++) {
+  //     Serial.print(((outBytes[i]>>j)&1)?"1":"0");
+  //   }
+  // }
+  // Serial.println();
 
-  return *reinterpret_cast<double*>(&inBytes);
+  SPI.transferBytes(outBytes, inBytes, sizeof(double));
+
+  // Serial.print("In: ");
+  // for (int i=0; i<sizeof(double);i++){
+  //   for (int j=0;j<8;j++) {
+  //     Serial.print(((inBytes[i]>>j)&1)?"1":"0");
+  //   }
+  // }
+  // Serial.println();
+
+  double reply = *reinterpret_cast<double*>(&inBytes);
+
+  // Serial.print("Reply: ");
+  // Serial.println(reply);
+
+  return reply;
 }
 
 float sram_transfer(float value = 0) {
+  // Serial.print("SRAM Transfer (float): ");
+  // Serial.println(value);
   uint8_t *outBytes = reinterpret_cast<uint8_t*>(&value);
-  uint8_t inBytes[4];
+  uint8_t inBytes[sizeof(float)];
 
-  SPI.transferBytes(outBytes, inBytes, 4);
+  SPI.transferBytes(outBytes, inBytes, sizeof(float));
 
   return *reinterpret_cast<float*>(&inBytes);
 }
@@ -97,7 +130,9 @@ void sram_write(uint32_t value, int address, int size) {
 
 
 void sram_write_reading(WeatherReading reading, int readingIndex) {
-  int addrReading = SRAM_ADDR_READINGS + readingIndex;
+  int addrReading = SRAM_ADDR_READINGS + (SRAM_SIZE_READINGS * readingIndex);
+  // Serial.print("Writing WeatherReading to Sram Addr: ");
+  // Serial.println(addrReading);
   sram_start(SRAM_MODE_WRITE, addrReading, SRAM_SIZE_READINGS);
 
   sram_transfer(reading.timestamp);
@@ -113,16 +148,18 @@ void sram_write_reading(WeatherReading reading, int readingIndex) {
 }
 
 void sram_read_reading(WeatherReading *reading, int readingIndex) {
-  int addrReading = SRAM_ADDR_READINGS + readingIndex;
+  int addrReading = SRAM_ADDR_READINGS + (SRAM_SIZE_READINGS * readingIndex);
+  // Serial.print("Reading WeatherReading from Sram Addr: ");
+  // Serial.println(addrReading);
   sram_start(SRAM_MODE_READ, addrReading, SRAM_SIZE_READINGS);
 
   reading->timestamp = sram_transfer(uint32_t(0));
-  reading->temperature = sram_transfer(double(0));
-  reading->humidity = sram_transfer(double(0));
-  reading->pressure = sram_transfer(double(0));
-  reading->battery = sram_transfer(double(0));
-  reading->windSpeed = sram_transfer(double(0));
-  reading->windDirection = sram_transfer(double(0));
+  reading->temperature = sram_transfer(float(0));
+  reading->humidity = sram_transfer(float(0));
+  reading->pressure = sram_transfer(float(0));
+  reading->battery = sram_transfer(float(0));
+  reading->windSpeed = sram_transfer(float(0));
+  reading->windDirection = sram_transfer(float(0));
   reading->populated = (bool)SPI.transfer(0);
 
   sram_end();

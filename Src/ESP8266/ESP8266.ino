@@ -13,6 +13,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
 WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
+#define CLEAN_START 0 // This will mark SRAM as unpopulated and update rtc to compile time
+
 #define DEBUG 3
 
 #if DEBUG
@@ -67,7 +69,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define SAMPLES_PER_READING 5//READING_INTERVAL/SAMPLE_INTERVAL // How many samples to average for a reading 300000/2000 = 30 for one every 2 seconds
 #define BATTERY_SAMPLE_MODULO 20 // Every X samples check the battery
 
-#define MAX_READING_STORAGE 288//576 // How many readings to store in memory; 288 with 300000 ms samples (5 min) is 24 hours; 576 = 48 hours
+#define MAX_READING_STORAGE 576 // How many readings to store in memory; 288 with 300000 ms samples (5 min) is 24 hours; 576 = 48 hours
 #define READING_SUBMIT_INTERVAL 1 // How many to have before attempting to submit
 #define MAX_FAILED_SUBMITS 3
 
@@ -83,15 +85,14 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define WIND_VANE_MAX 1023
 
 // Globals
+unsigned long totalReadings = 0; // How many readings since boot
 WeatherReadingAccumulator sampleAccumulator;
+
+unsigned int weatherReadingWriteIndex = 0;
+unsigned int weatherReadingReadIndex = 0;
 
 unsigned long lastSampleMillis = 0;
 bool bmeConnected = false;
-
-WeatherReading weatherReadings[MAX_READING_STORAGE];
-unsigned int weatherReadingWriteIndex = 0;
-unsigned int weatherReadingReadIndex = 0;
-unsigned long totalReadings = 0;
 
 // Init structures
 RTC_DS1307 RTC; // Real Time Clock
@@ -154,8 +155,13 @@ void setup() {
   RTC.begin();
 
   // Check to see if the RTC is keeping time.  If it is, load the time from your computer.
-  if (!RTC.isrunning()) {
+  if (CLEAN_START || !RTC.isrunning()) {
+    #if CLEAN_START
+    DEBUG_PRINTLN("Syncing RTC to compile time");
+    #else
     DEBUG_PRINTLN("RTC is NOT running!");
+    #endif
+
     // This will reflect the time that your sketch was compiled
     RTC.adjust(DateTime(__DATE__, __TIME__));
   }
@@ -177,7 +183,9 @@ void setup() {
     Serial.println("BME280 sensor is not detected at i2caddr 0x76; check wiring.");
   }
 
+  #if CLEAN_START
   sram_set_populated(false);
+  #endif
 
   // See if there was things previously stored
   if (sram_get_populated()) {
@@ -216,8 +224,11 @@ void loop() {
     zeroWeatherReading(&sampleAccumulator);
 
     // Store the reading in sram
+    DEBUG_PRINTLN();
     DEBUG_PRINT("Storing samples as reading: ");
     DEBUG_PRINTLN(weatherReadingWriteIndex);
+
+    printWeatherReading(currentReading);
     sram_write_reading(currentReading, weatherReadingWriteIndex);
 
     weatherReadingWriteIndex++;
@@ -242,6 +253,8 @@ void submit_stored_readings() {
 
   while (failedSubmits < MAX_FAILED_SUBMITS) {
     sram_read_reading(&currentReading, weatherReadingReadIndex);
+
+    printWeatherReading(currentReading);
 
     noInterrupts();
     bool success = submit_reading(currentReading);
@@ -481,13 +494,13 @@ void take_sample() {
 	DEBUG_PRINT(" of total readings: ");
 	DEBUG_PRINTLN(totalReadings);
 
-  DEBUG_PRINTLN("LAST SAMPLE:");
-  WeatherReadingAccumulator tmpAccum;
-  sram_read_accumulator(&tmpAccum);
-  WeatherReading tmpReadubg = get_averaged_accumulator(tmpAccum);
-  printWeatherReading(tmpReadubg);
-  DEBUG_PRINTLN("[END STORED READING]");
-  DEBUG_PRINTLN();
+  // DEBUG_PRINTLN("LAST SAMPLE:");
+  // WeatherReadingAccumulator tmpAccum;
+  // sram_read_accumulator(&tmpAccum);
+  // WeatherReading tmpReadubg = get_averaged_accumulator(tmpAccum);
+  // printWeatherReading(tmpReadubg);
+  // DEBUG_PRINTLN("[END STORED READING]");
+  // DEBUG_PRINTLN();
 
   //******************************************/
 	//* Timestamp
