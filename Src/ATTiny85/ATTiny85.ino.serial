@@ -1,0 +1,64 @@
+#include <SoftwareSerial.h>
+
+// ATTiny Pins
+#define RX_PIN 4
+#define TX_PIN 1
+
+// Serial comns
+SoftwareSerial Serial(RX_PIN, TX_PIN);
+
+// Other variables
+unsigned long lastEspContactMillis = 0;
+unsigned long lastTickMillis = 0;
+bool ledOn = false;
+char buffer[50];
+int bufferIndex = 0;
+
+void setup() {
+  Serial.begin(2400);
+
+  while (!Serial) {}
+
+  Serial.println();
+  Serial.println("Doing all the start up things on ATtiny85");
+  Serial.println(MCUSR, HEX);
+  MCUSR = 0;
+  Serial.println(MCUSR, HEX);
+
+  /*
+  16
+  2
+  54
+  */
+  //
+  // Serial.println(digitalPinToBitMask(RX_PIN));
+  // uint8_t port = digitalPinToPort(RX_PIN);
+  // Serial.println(port);
+  // volatile uint8_t *pir = portInputRegister(port);
+  // uint8_t capatured = pir;
+  // Serial.println(capatured);
+}
+
+void loop() {
+  Serial.print("Tick: ");
+
+
+  if (Serial.available()) {
+    Serial.println("Availble");
+
+    while (Serial.available()) {
+      char rxByte = Serial.read();
+      buffer[bufferIndex++] = rxByte;
+
+      if (rxByte == 10 || bufferIndex == 50) {
+        Serial.print("pong: ");
+        Serial.println(buffer);
+        bufferIndex = 0;
+      }
+    }
+  } else {
+    Serial.println("No Serial Avvailable");
+  }
+
+  delay(500);
+}

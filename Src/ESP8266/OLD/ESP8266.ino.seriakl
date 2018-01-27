@@ -1,0 +1,33 @@
+// Esp Pin Assignments
+#define SW_SERIAL_TX_PIN D1
+#define SW_SERIAL_RX_PIN D2
+
+unsigned long lastSampleMillis =0;
+#define SAMPLE_INTERVAL 2000
+
+// Serial connection to ATtiny
+#include <SoftwareSerial.h>
+SoftwareSerial ATtinySerial(SW_SERIAL_RX_PIN, SW_SERIAL_TX_PIN);
+
+void setup() {
+  Serial.begin(19200);
+
+	// SoftwareSerial
+	ATtinySerial.begin(2400);
+}
+
+
+void loop() {
+	while (ATtinySerial.available()) {
+		Serial.write(ATtinySerial.read());
+	}
+
+	if (millis()-lastSampleMillis > SAMPLE_INTERVAL) {
+		lastSampleMillis = millis();
+
+		// Send it to attiny for storage
+		ATtinySerial.println("Frogs");
+
+		Serial.println("Sleeping Now.");
+	}
+}
