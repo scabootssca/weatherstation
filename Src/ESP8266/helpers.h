@@ -119,6 +119,10 @@ void printWeatherReading(WeatherReadingAccumulator reading) {
 	Serial.print("Wind Direction: ");
 	Serial.print(reading.windDirection);
 	Serial.println("deg");
+	Serial.print("Num Samples: ");
+	Serial.println(reading.numSamples);
+	Serial.print("Num Battery Samples: ");
+	Serial.println(reading.numBatterySamples);
 }
 
 void zeroWeatherReading(WeatherReading *reading) {
