@@ -23,8 +23,8 @@ struct WeatherReadingAccumulator {
 	double windSpeed = 0;
 	double windDirection = 0;
 
-	int numSamples = 0;
-	int numBatterySamples = 0;
+	uint32_t numSamples = 0;
+	uint32_t numBatterySamples = 0;
 
 	bool populated = false;
 };
@@ -170,7 +170,7 @@ void store_accumulator(WeatherReading *dest, WeatherReadingAccumulator src) {
 WeatherReading get_averaged_accumulator(WeatherReadingAccumulator src) {
 	WeatherReading dest;
 
-	dest.timestamp = src.timestamp/src.numSamples;
+	dest.timestamp = src.timestamp;
 	dest.temperature = src.temperature/src.numSamples;
 	dest.humidity = src.humidity/src.numSamples;
 	dest.pressure = src.pressure/src.numSamples;

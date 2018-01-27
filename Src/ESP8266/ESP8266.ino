@@ -51,6 +51,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define REFV_ENABLE_PIN 2
 #define SOLAR_ENABLE_PIN 3
 #define BAT_DIV_ENABLE_PIN 4
+#define SRAM_CS_PIN 5
 #define ATTINY_DATA_REQUEST_PIN 6
 #define ADC_CS_PIN 7
 
@@ -83,22 +84,30 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 
 // Globals
 WeatherReadingAccumulator sampleAccumulator;
-unsigned int readingIndex = 0;
-unsigned long totalReadings = 0;
+
 unsigned long lastSampleMillis = 0;
 bool bmeConnected = false;
 
-WeatherReading storedReadings[MAX_READING_STORAGE];
-unsigned short storedReadingIndex = 0;
+WeatherReading weatherReadings[MAX_READING_STORAGE];
+unsigned int weatherReadingWriteIndex = 0;
+unsigned int weatherReadingReadIndex = 0;
+unsigned long totalReadings = 0;
 
 // Init structures
 RTC_DS1307 RTC; // Real Time Clock
 Adafruit_MCP23008 mcp; // IO Expander
 Adafruit_BME280 bmeSensor; // Termometer, Hygrometer, Barometer
 
+// Sram, uses MCP as CS so needs to be here
+#include "MCP_23A1024.h"
+
 // // Serial connection to ATtiny
-// #include <SoftwareSerial.h>
-// SoftwareSerial ATtinySerial(SW_SERIAL_RX_PIN, -1);
+#include <SoftwareSerial.h>
+SoftwareSerial ATtinySerial(SW_SERIAL_RX_PIN, -1);
+bool ATtinyNewline = true;
+char attinyReplyBuffer[11]; // 1 + 4 + 1 + 4 + 1 == (~ Int1 ! Int2 \n)
+short attinyReplyBufferIndex = 0;
+bool attinyReplyBuffering = false;
 
 void setup() {
   Serial.begin(19200);
@@ -110,7 +119,7 @@ void setup() {
   Serial.println("Initilizing ESP8266");
 
 	// SoftwareSerial
-	//ATtinySerial.begin(9600);
+	ATtinySerial.begin(9600);
 
   Wire.begin(SDA_PIN, SCL_PIN);
 
@@ -122,6 +131,9 @@ void setup() {
   // Turn leds on for init
   mcp.digitalWrite(OK_LED_PIN, HIGH);
   mcp.digitalWrite(ERROR_LED_PIN, HIGH);
+  // Don't select SRAM
+  mcp.pinMode(SRAM_CS_PIN, OUTPUT);
+  mcp.pinMode(SRAM_CS_PIN, HIGH);
   // Don't select ADC
   mcp.pinMode(ADC_CS_PIN, OUTPUT);
 	mcp.digitalWrite(ADC_CS_PIN, HIGH);
@@ -165,74 +177,140 @@ void setup() {
     Serial.println("BME280 sensor is not detected at i2caddr 0x76; check wiring.");
   }
 
+  sram_set_populated(false);
+
+  // See if there was things previously stored
+  if (sram_get_populated()) {
+    Serial.println("Previously Populated");
+
+    sram_read_accumulator(&sampleAccumulator);
+    sram_read(&weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
+    sram_read(&weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
+
+  } else {
+    Serial.println("Unpopulated!");
+
+    sram_write_accumulator(sampleAccumulator);
+    sram_write(weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
+    sram_write(weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
+
+    sram_set_populated();
+  }
+
   // Turn off init leds
   mcp.digitalWrite(OK_LED_PIN, LOW);
   mcp.digitalWrite(ERROR_LED_PIN, LOW);
 }
 
 void loop() {
+  // Print what it prints through us
+	recv_attiny_serial();
+
   if (millis()-lastSampleMillis > SAMPLE_INTERVAL) {
     take_sample();
   }
 
   if (sampleAccumulator.numSamples >= SAMPLES_PER_READING) {
-    //store_accumulator_samples();
+    // Store the sample accumulator as a reading and zero the accumulator
     WeatherReading currentReading = get_averaged_accumulator(sampleAccumulator);
-    submit_reading(currentReading);
-    disconnect_from_wifi();
-    //submit_all_readings();
+    zeroWeatherReading(&sampleAccumulator);
+
+    // Store the reading in sram
+    DEBUG_PRINT("Storing samples as reading: ");
+    DEBUG_PRINTLN(weatherReadingWriteIndex);
+    sram_write_reading(currentReading, weatherReadingWriteIndex);
+
+    weatherReadingWriteIndex++;
+
+    // For index overflow; back to beginning
+    if (weatherReadingWriteIndex > MAX_READING_STORAGE) {
+      weatherReadingWriteIndex = 0;
+    }
+
+    sram_write(weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
+
+    // Try and submit any readings
+    submit_stored_readings();
   }
 }
 
-// void store_accumulator_samples() {
-//   store_accumulator(&storedReadings[storedReadingIndex++], sampleAccumulator);
-//   zeroWeatherReading(&sampleAccumulator);
-//   totalReadings++;
-//
-//   if (storedReadingIndex >= MAX_READING_STORAGE) {
-//     storedReadingIndex = 0;
-//   }
-// }
+void submit_stored_readings() {
+  int failedSubmits = 0;
+  WeatherReading currentReading;
 
-// void submit_all_readings() {
-//   unsigned short failedReadings[MAX_READING_STORAGE];
-//   unsigned short failIndex = 0;
-//
-//   for (int readingIndex=0; readingIndex<MAX_READING_STORAGE; readingIndex++) {
-//     // We've reached unpopulated readings
-//     if (!storedReadings[readingIndex].populated) {
-//       break;
-//     }
-//
-//     Serial.print("[Submitting Index: ");
-//     Serial.print(readingIndex);
-//     Serial.println("]");
-//
-//     if (submit_reading(storedReadings[readingIndex])) {
-//       zeroWeatherReading(&storedReadings[readingIndex]);
-//     } else {
-//       failedReadings[failIndex++] = readingIndex;
-//     }
-//   }
-//
-//   disconnect_from_wifi();
-//
-//   if (failIndex) {
-//     for (int i=0; i<MAX_READING_STORAGE; i++) {
-//       if (i < failIndex) {
-//         copyWeatherReading(storedReadings[failedReadings[i]], storedReadings[i]);
-//       } else {
-//         zeroWeatherReading(&storedReadings[i]);
-//       }
-//     }
-//   }
-// }
+  Serial.println("[Starting Submit Stored Readings]");
+
+  while (failedSubmits < MAX_FAILED_SUBMITS) {
+    sram_read_reading(&currentReading, weatherReadingReadIndex);
+
+    noInterrupts();
+    bool success = submit_reading(currentReading);
+    interrupts();
+
+    // Success then advance the read pointer
+    if (success) {
+      weatherReadingReadIndex++;
+
+      if (weatherReadingReadIndex == weatherReadingWriteIndex) {
+        break;
+      }
+
+      if (weatherReadingReadIndex >= MAX_READING_STORAGE) {
+        weatherReadingReadIndex = 0;
+      }
+
+      // Store it
+      sram_write(weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
+    } else {
+      failedSubmits++;
+
+      Serial.print("Failed - Retries Left: ");
+      Serial.println(MAX_FAILED_SUBMITS-failedSubmits);
+    }
+  }
+
+  disconnect_from_wifi();
+}
+
+bool recv_attiny_serial() {
+	// Print attiny serial messages
+	while (ATtinySerial.available() > 0) {
+		uint8_t rxByte = ATtinySerial.read();
+
+		if (ATtinyNewline) {
+			ATtinyNewline = false;
+
+			if (!attinyReplyBuffering) {
+				Serial.write("[ATtiny]");
+			}
+		}
+
+		// Print it if it's not a reply to us
+		if (!attinyReplyBuffering) {
+			Serial.write(rxByte);
+		}
+
+		if (rxByte == 126) {
+			attinyReplyBufferIndex = 0;
+			attinyReplyBuffering = true;
+		} else if (rxByte == 10) {
+			ATtinyNewline = true;
+			attinyReplyBuffering = false;
+		}
+
+		if (attinyReplyBuffering && attinyReplyBufferIndex < 5) {
+			attinyReplyBuffer[attinyReplyBufferIndex++] = rxByte;
+		}
+	}
+}
 
 bool submit_reading(WeatherReading currentReading) {
   mcp.digitalWrite(OK_LED_PIN, HIGH);
 
   DEBUG_PRINTLN();
-  DEBUG_PRINTLN("[Submitting Samples]");
+  DEBUG_PRINT("[Submitting Reading (");
+  DEBUG_PRINT(weatherReadingReadIndex);
+  DEBUG_PRINTLN(")]");
 
   bool success = false;
   char outputUrl[300] = "";
@@ -375,6 +453,17 @@ bool disconnect_from_wifi() {
   DEBUG_PRINTLN(result?"Success]":"Failed (!)]");
 }
 
+void sram_restore_accumulator() {
+  WeatherReadingAccumulator tmpAccum;
+  sram_read_accumulator(&sampleAccumulator);
+
+  printWeatherReading(get_averaged_accumulator(sampleAccumulator));
+}
+
+void sram_store_accumulator() {
+  sram_write_accumulator(sampleAccumulator);
+}
+
 void take_sample() {
   lastSampleMillis = millis();
 
@@ -388,15 +477,23 @@ void take_sample() {
 	DEBUG_PRINT("/");
 	DEBUG_PRINT(SAMPLES_PER_READING);
 	DEBUG_PRINT(" for reading buffer index: ");
-	DEBUG_PRINT(readingIndex);
+	DEBUG_PRINT(weatherReadingWriteIndex);
 	DEBUG_PRINT(" of total readings: ");
 	DEBUG_PRINTLN(totalReadings);
+
+  DEBUG_PRINTLN("LAST SAMPLE:");
+  WeatherReadingAccumulator tmpAccum;
+  sram_read_accumulator(&tmpAccum);
+  WeatherReading tmpReadubg = get_averaged_accumulator(tmpAccum);
+  printWeatherReading(tmpReadubg);
+  DEBUG_PRINTLN("[END STORED READING]");
+  DEBUG_PRINTLN();
 
   //******************************************/
 	//* Timestamp
 	//******************************************/
   DateTime now = RTC.now();
-  sampleAccumulator.timestamp += now.unixtime();
+  sampleAccumulator.timestamp = now.unixtime();
 
   //******************************************/
 	//* Battery block
@@ -444,6 +541,8 @@ void take_sample() {
 	WeatherReading sampleReading = get_averaged_accumulator(sampleAccumulator);
 	printWeatherReading(sampleReading);
 	#endif
+
+  sram_store_accumulator();
 
   #if SAMPLE_INDICATOR_LED_ENABLED
   mcp.digitalWrite(OK_LED_PIN, LOW);
