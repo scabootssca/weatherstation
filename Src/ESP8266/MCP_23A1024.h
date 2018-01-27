@@ -30,11 +30,12 @@ On Esp:
 
 #define SRAM_MODE_READ 0
 #define SRAM_MODE_WRITE 1
+#define SRAM_MAX_ADDRESS 0xFFFF
 
-void sram_start(bool mode, int address, int size) {
-  // Only 1mb
-  if (address+size > 1024) {
-    return;
+bool sram_start(bool mode, int address, int size) {
+  // Only 1mbit
+  if (address+size > SRAM_MAX_ADDRESS) {
+    return false;
   }
 
   int spiHz = 500000; /* Seems it doesn't it wants to take longer, so a slower clock */
@@ -44,9 +45,11 @@ void sram_start(bool mode, int address, int size) {
 
   SPI.transfer((mode == SRAM_MODE_READ)?0b00000011:0b00000010); // Read cmd: Write cmd
 
-  SPI.transfer(address >> 16);
-  SPI.transfer(address >> 8);
-  SPI.transfer(address);
+  SPI.transfer((uint8_t)address >> 16);
+  SPI.transfer((uint8_t)address >> 8);
+  SPI.transfer((uint8_t)address);
+
+  return true;
 }
 
 void sram_end() {
@@ -131,8 +134,8 @@ void sram_write(uint32_t value, int address, int size) {
 
 void sram_write_reading(WeatherReading reading, int readingIndex) {
   int addrReading = SRAM_ADDR_READINGS + (SRAM_SIZE_READINGS * readingIndex);
-  // Serial.print("Writing WeatherReading to Sram Addr: ");
-  // Serial.println(addrReading);
+  Serial.print("Writing WeatherReading to Sram Addr: ");
+  Serial.println(addrReading);
   sram_start(SRAM_MODE_WRITE, addrReading, SRAM_SIZE_READINGS);
 
   sram_transfer(reading.timestamp);
@@ -149,8 +152,8 @@ void sram_write_reading(WeatherReading reading, int readingIndex) {
 
 void sram_read_reading(WeatherReading *reading, int readingIndex) {
   int addrReading = SRAM_ADDR_READINGS + (SRAM_SIZE_READINGS * readingIndex);
-  // Serial.print("Reading WeatherReading from Sram Addr: ");
-  // Serial.println(addrReading);
+  Serial.print("Reading WeatherReading from Sram Addr: ");
+  Serial.println(addrReading);
   sram_start(SRAM_MODE_READ, addrReading, SRAM_SIZE_READINGS);
 
   reading->timestamp = sram_transfer(uint32_t(0));

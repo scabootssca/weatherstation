@@ -43,7 +43,7 @@ struct WeatherReadingAccumulator {
 
 void printWeatherReading(WeatherReading reading) {
 	// For displaying them in local time
-	DateTime readingTimeLocal = DateTime(reading.timestamp);// + TimeSpan(60*60*GMT_OFFSET));
+	DateTime readingTimeLocal = DateTime(DateTime(reading.timestamp) + TimeSpan(60*60*GMT_OFFSET));
 
 	Serial.print("Timestamp: ");
 	Serial.print(reading.timestamp, DEC);
@@ -83,7 +83,7 @@ void printWeatherReading(WeatherReading reading) {
 
 void printWeatherReading(WeatherReadingAccumulator reading) {
 	// For displaying them in local time
-	DateTime readingTimeLocal = DateTime(reading.timestamp);// + TimeSpan(60*60*GMT_OFFSET));
+	DateTime readingTimeLocal = DateTime(DateTime(reading.timestamp) + TimeSpan(60*60*GMT_OFFSET));
 
 	Serial.print("Timestamp: ");
 	Serial.print(reading.timestamp, DEC);

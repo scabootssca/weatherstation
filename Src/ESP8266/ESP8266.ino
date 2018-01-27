@@ -13,7 +13,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
 WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#define CLEAN_START 0 // This will mark SRAM as unpopulated and update rtc to compile time
+#define CLEAN_START 1 // This will mark SRAM as unpopulated and update rtc to compile time
 
 #define DEBUG 3
 
@@ -92,6 +92,7 @@ unsigned int weatherReadingWriteIndex = 0;
 unsigned int weatherReadingReadIndex = 0;
 
 unsigned long lastSampleMillis = 0;
+unsigned long lastAnemometerReadingMillis = 0;
 bool bmeConnected = false;
 
 // Init structures
@@ -157,13 +158,13 @@ void setup() {
   // Check to see if the RTC is keeping time.  If it is, load the time from your computer.
   if (CLEAN_START || !RTC.isrunning()) {
     #if CLEAN_START
-    DEBUG_PRINTLN("Syncing RTC to compile time");
+    DEBUG_PRINTLN("Syncing RTC to compile time (UTC)");
     #else
     DEBUG_PRINTLN("RTC is NOT running!");
     #endif
 
     // This will reflect the time that your sketch was compiled
-    RTC.adjust(DateTime(__DATE__, __TIME__));
+    RTC.adjust(DateTime(DateTime(__DATE__, __TIME__) - TimeSpan(60*60*GMT_OFFSET)));
   }
 
   // BME280
@@ -222,16 +223,19 @@ void loop() {
     // Store the sample accumulator as a reading and zero the accumulator
     WeatherReading currentReading = get_averaged_accumulator(sampleAccumulator);
     zeroWeatherReading(&sampleAccumulator);
+    sram_write_accumulator(sampleAccumulator);
+
+    // Count it for debug printout purposes
+    totalReadings++;
 
     // Store the reading in sram
     DEBUG_PRINTLN();
     DEBUG_PRINT("Storing samples as reading: ");
     DEBUG_PRINTLN(weatherReadingWriteIndex);
+    sram_write_reading(currentReading, weatherReadingWriteIndex);
+    weatherReadingWriteIndex++;
 
     printWeatherReading(currentReading);
-    sram_write_reading(currentReading, weatherReadingWriteIndex);
-
-    weatherReadingWriteIndex++;
 
     // For index overflow; back to beginning
     if (weatherReadingWriteIndex > MAX_READING_STORAGE) {
@@ -251,9 +255,16 @@ void submit_stored_readings() {
 
   Serial.println("[Starting Submit Stored Readings]");
 
+  if (weatherReadingReadIndex == weatherReadingWriteIndex) {
+    Serial.println("[Nothing to submit]");
+    return;
+  }
+
   while (failedSubmits < MAX_FAILED_SUBMITS) {
     sram_read_reading(&currentReading, weatherReadingReadIndex);
 
+    Serial.print("Weather Reading Index: ");
+    Serial.println(weatherReadingReadIndex);
     printWeatherReading(currentReading);
 
     noInterrupts();
@@ -264,16 +275,17 @@ void submit_stored_readings() {
     if (success) {
       weatherReadingReadIndex++;
 
-      if (weatherReadingReadIndex == weatherReadingWriteIndex) {
-        break;
-      }
-
       if (weatherReadingReadIndex >= MAX_READING_STORAGE) {
         weatherReadingReadIndex = 0;
       }
 
       // Store it
       sram_write(weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
+
+      // If we've submitted all then break
+      if (weatherReadingReadIndex == weatherReadingWriteIndex) {
+        break;
+      }
     } else {
       failedSubmits++;
 
@@ -315,6 +327,28 @@ bool recv_attiny_serial() {
 			attinyReplyBuffer[attinyReplyBufferIndex++] = rxByte;
 		}
 	}
+}
+
+bool wait_attiny_data(int timeoutMs = 50) {
+	attinyReplyBuffering = true;
+	int totalDelayMs = 0;
+
+	do {
+		recv_attiny_serial();
+		delay(1);
+		totalDelayMs++;
+
+		if (totalDelayMs >= timeoutMs) {
+			break;
+		}
+	} while (attinyReplyBuffering);
+
+	// If we timed out
+	if (totalDelayMs >= timeoutMs) {
+		return false;
+	}
+
+	return true;
 }
 
 bool submit_reading(WeatherReading currentReading) {
@@ -484,13 +518,20 @@ void take_sample() {
   mcp.digitalWrite(OK_LED_PIN, HIGH);
   #endif
 
+  // Get the reading from the ATtiny
+	mcp.pinMode(ATTINY_DATA_REQUEST_PIN, OUTPUT);
+	mcp.digitalWrite(ATTINY_DATA_REQUEST_PIN, HIGH);
+	delay(1);
+
 	DEBUG_PRINTLN();
 	DEBUG_PRINT("Taking Sample Num: ");
 	DEBUG_PRINT(sampleAccumulator.numSamples+1);
 	DEBUG_PRINT("/");
 	DEBUG_PRINT(SAMPLES_PER_READING);
-	DEBUG_PRINT(" for reading buffer index: ");
+	DEBUG_PRINT(" Write index: ");
 	DEBUG_PRINT(weatherReadingWriteIndex);
+  DEBUG_PRINT(" Read index: ");
+  DEBUG_PRINT(weatherReadingReadIndex);
 	DEBUG_PRINT(" of total readings: ");
 	DEBUG_PRINTLN(totalReadings);
 
@@ -546,6 +587,35 @@ void take_sample() {
   //* WIND VANE BLOCK
   //******************************************/
   sampleAccumulator.windDirection += readWindVane();
+
+  //******************************************/
+  //* ATTINY INTERRUPT READINGS
+  //******************************************/
+  float anemometerMph = 0;
+
+  bool recvSuccess = wait_attiny_data();
+  int numTimelyAnemometerSamples = 0;
+
+  if (recvSuccess) {
+    // Get how many samples we had
+    numTimelyAnemometerSamples = (int)attinyReplyBuffer[3];
+  }
+
+  // mph = revolutions * measurementDuration * calibrationData
+  unsigned long millisNow = millis();
+  anemometerMph = (numTimelyAnemometerSamples * 0.5) * (60000.0 / (millisNow-lastAnemometerReadingMillis)) * ANEMOMETER_CALIBRATION_COEF;
+
+  #if DEBUG >= 2
+  DEBUG_PRINT("Anemometer: ");
+  DEBUG_PRINT(numTimelyAnemometerSamples);
+  DEBUG_PRINT(" Samples in last ");
+  DEBUG_PRINT((millisNow-lastAnemometerReadingMillis)/1000.0);
+  DEBUG_PRINT(" second ");
+  DEBUG_PRINT(anemometerMph);
+  DEBUG_PRINTLN(" MPH");
+  #endif
+
+  lastAnemometerReadingMillis = millisNow;
 
   // Print and stuff
   sampleAccumulator.numSamples++;
