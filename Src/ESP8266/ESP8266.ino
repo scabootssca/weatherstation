@@ -88,8 +88,8 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 unsigned long totalReadings = 0; // How many readings since boot
 WeatherReadingAccumulator sampleAccumulator;
 
-unsigned int weatherReadingWriteIndex = 0;
-unsigned int weatherReadingReadIndex = 0;
+uint32_t weatherReadingWriteIndex = 0;
+uint32_t weatherReadingReadIndex = 0;
 
 unsigned long lastSampleMillis = 0;
 unsigned long lastAnemometerReadingMillis = 0;
@@ -187,28 +187,47 @@ void setup() {
   Serial.print("Max Readings Storable: ");
   Serial.println(SRAM_MAX_READINGS);
 
+  // //int readIndex = 160;
+  // WeatherReading currentReading;
+  //
+  // for (int readIndex=4;readIndex<5;readIndex++) {
+  //   sram_read_reading(&currentReading, readIndex);
+  //
+  //   Serial.print("Weather Reading Index: ");
+  //   Serial.println(readIndex);
+  //   printWeatherReading(currentReading);
+  // }
+  // return;
+
   #if CLEAN_START
-  sram_set_populated(false);
-  #endif
+  Serial.println("Unpopulated!");
 
-  // See if there was things previously stored
-  if (sram_get_populated()) {
-    Serial.println("Previously Populated");
+  sram_write(weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
+  sram_write(weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
+  sram_write_accumulator(sampleAccumulator);
 
-    sram_read_accumulator(&sampleAccumulator);
-    printWeatherReading(sampleAccumulator);
-    sram_read(&weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
-    sram_read(&weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
+  sram_set_populated();
+  #else
+  Serial.println("Previously Populated");
 
-  } else {
-    Serial.println("Unpopulated!");
+  sram_read(&weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
+  sram_read(&weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
+  //TODO: For some reason this gave bogus values when reset on [Connecting to Wifi: ...
 
-    sram_write_accumulator(sampleAccumulator);
-    sram_write(weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
-    sram_write(weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
+  sram_read_accumulator(&sampleAccumulator);
 
-    sram_set_populated();
+  if (sampleAccumulator.timestamp == 0) {
+    Serial.println("Invalid accumulator; zeroing");
+    zeroWeatherReading(&sampleAccumulator);
   }
+
+  // Print the info
+  Serial.print("Read index: ");
+  Serial.println(weatherReadingReadIndex);
+  Serial.print("Write index: ");
+  Serial.println(weatherReadingWriteIndex);
+  printWeatherReading(sampleAccumulator);
+  #endif
 
   // Turn off init leds
   mcp.digitalWrite(OK_LED_PIN, LOW);
@@ -217,7 +236,7 @@ void setup() {
 
 void loop() {
   // Print what it prints through us
-	recv_attiny_serial();
+	//recv_attiny_serial();
 
   if (millis()-lastSampleMillis > SAMPLE_INTERVAL) {
     take_sample();
@@ -596,18 +615,19 @@ void take_sample() {
   //* ATTINY INTERRUPT READINGS
   //******************************************/
   float anemometerMph = 0;
-
-  bool recvSuccess = wait_attiny_data();
   int numTimelyAnemometerSamples = 0;
 
-  if (recvSuccess) {
-    // Get how many samples we had
-    numTimelyAnemometerSamples = (int)attinyReplyBuffer[3];
-  }
+  // bool recvSuccess = wait_attiny_data();
 
-  // mph = revolutions * measurementDuration * calibrationData
+  //
+  // if (recvSuccess) {
+  //   // Get how many samples we had
+  //   numTimelyAnemometerSamples = (int)attinyReplyBuffer[3];
+  // }
+  //
+  // // mph = revolutions * measurementDuration * calibrationData
   unsigned long millisNow = millis();
-  anemometerMph = (numTimelyAnemometerSamples * 0.5) * (60000.0 / (millisNow-lastAnemometerReadingMillis)) * ANEMOMETER_CALIBRATION_COEF;
+  // anemometerMph = (numTimelyAnemometerSamples * 0.5) * (60000.0 / (millisNow-lastAnemometerReadingMillis)) * ANEMOMETER_CALIBRATION_COEF;
 
   #if DEBUG >= 2
   DEBUG_PRINT("Anemometer: ");
@@ -630,6 +650,9 @@ void take_sample() {
 	#endif
 
   sram_store_accumulator();
+
+  // zeroWeatherReading(&sampleAccumulator);
+  // sram_read_accumulator(&sampleAccumulator);
 
   #if SAMPLE_INDICATOR_LED_ENABLED
   mcp.digitalWrite(OK_LED_PIN, LOW);
