@@ -27,7 +27,7 @@ struct WeatherReading {
 };
 
 struct WeatherReadingAccumulator {
-	uint32_t timestamp;
+	uint64_t timestamp;
 	double temperature = 0;
 	double humidity = 0;
 	double pressure = 0;
@@ -96,7 +96,7 @@ void printWeatherReading(WeatherReadingAccumulator reading) {
 	DateTime readingTimeLocal = DateTime(DateTime(reading.timestamp) + TimeSpan(60*60*GMT_OFFSET));
 
 	Serial.print("Timestamp: ");
-	Serial.print(reading.timestamp, DEC);
+	Serial.print(uint32_t(reading.timestamp/reading.numSamples), DEC);
 	Serial.print(" ");
 	Serial.print(readingTimeLocal.month(), DEC);
 	Serial.print('/');
@@ -112,22 +112,22 @@ void printWeatherReading(WeatherReadingAccumulator reading) {
 	Serial.println();
 
 	Serial.print("Temp: ");
-	Serial.print(reading.temperature);
+	Serial.print(reading.temperature/reading.numSamples);
 	Serial.println("*C");
 	Serial.print("Pressure: ");
-	Serial.print(reading.pressure);
+	Serial.print(reading.pressure/reading.numSamples);
 	Serial.println("hpa");
 	Serial.print("Humidity: ");
-	Serial.print(reading.humidity);
+	Serial.print(reading.humidity/reading.numSamples);
 	Serial.println('%');
 	Serial.print("Battery: ");
-	Serial.print(reading.battery);
+	Serial.print(reading.battery/reading.numBatterySamples);
 	Serial.println("mV");
 	Serial.print("Wind Speed: ");
-	Serial.print(reading.windSpeed);
+	Serial.print(reading.windSpeed/reading.numSamples);
 	Serial.println("mph");
 	Serial.print("Wind Direction: ");
-	Serial.print(reading.windDirection);
+	Serial.print(reading.windDirection/reading.numSamples);
 	Serial.println("deg");
 	Serial.print("Num Samples: ");
 	Serial.println(reading.numSamples);
@@ -180,7 +180,7 @@ void store_accumulator(WeatherReading *dest, WeatherReadingAccumulator src) {
 WeatherReading get_averaged_accumulator(WeatherReadingAccumulator src) {
 	WeatherReading dest;
 
-	dest.timestamp = src.timestamp;
+	dest.timestamp = src.timestamp/src.numSamples;
 	dest.temperature = src.temperature/src.numSamples;
 	dest.humidity = src.humidity/src.numSamples;
 	dest.pressure = src.pressure/src.numSamples;
@@ -353,4 +353,47 @@ float computeHeatIndex(float temperature, float percentHumidity, bool isFahrenhe
 //
 // 	return percent;
 // }
+
+
+String generate_request_url(WeatherReading weatherReading) {
+	// Make the url
+	String outputUrl = "/report.php?";
+
+  if (!isnan(weatherReading.temperature)) {
+    outputUrl += "temp=";
+    outputUrl += weatherReading.temperature;
+  }
+
+  if (!isnan(weatherReading.humidity)) {
+      outputUrl += "&humidity=";
+      outputUrl += weatherReading.humidity;
+
+      // If we have temperature and humidity then calculate and submit the heat index also
+      if (!isnan(weatherReading.temperature)) {
+        outputUrl += "&heatIndex=";
+        outputUrl += computeHeatIndex(weatherReading.temperature, weatherReading.humidity, false);
+      }
+  }
+
+  if (!isnan(weatherReading.pressure)) {
+    outputUrl += "&pressure=";
+    outputUrl += weatherReading.pressure;
+  }
+
+  outputUrl += "&bat=";
+  outputUrl += weatherReading.battery;
+  outputUrl += "&windSpeed=";
+  outputUrl += weatherReading.windSpeed;
+  outputUrl += "&windDirection=";
+  outputUrl += weatherReading.windDirection;
+
+  outputUrl += "&timestamp=";
+  outputUrl += weatherReading.timestamp;
+
+  // Secret key for security (>_O)
+  outputUrl += "&key=f6f9b0b8348a85843e951723a3060719f55985fd"; // frie!ggandham!!%2{[ sha1sum
+
+	return outputUrl;
+}
+
 #endif

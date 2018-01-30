@@ -78,7 +78,7 @@ void setup() {
   Serial.println("Initilizing ATmega328p");
 
   // Esp serial
-  ESPSerial.begin(2400);
+  ESPSerial.begin(ESP_ATMEGA_BAUD_RATE);
 
   // Inter-Chip interfaces
   Wire.begin();
@@ -148,15 +148,15 @@ void loop() {
     printWeatherReading(currentReading);
     Serial.println();
 
-    char message[] = "/temp=426.24&humidity=46.25&windSpeed=6.42";
-    send_esp_serial(ESP_MSG_REQUEST, message);
+    String outputUrl = generate_request_url(currentReading);
+    send_esp_serial(ESP_MSG_REQUEST, outputUrl.c_str());
   }
 }
 
-void send_esp_serial(char messageType, char *value) {
+void send_esp_serial(char messageType, const char *value) {
   Serial.print("ESP (sent)");
   Serial.print((int)messageType);
-  Serial.print(int((char)strlen(value)));
+  Serial.print((int)strlen(value));
   Serial.print(value);
   Serial.println();
 
@@ -171,8 +171,6 @@ bool recv_esp_serial() {
 		uint8_t rxByte = ESPSerial.read();
 
 		if (ESPNewline) {
-			ESPNewline = false;
-
 			if (!ESPReplyBuffering) {
 				Serial.write("ESP (recv)");
 			}
@@ -182,6 +180,11 @@ bool recv_esp_serial() {
 		if (!ESPReplyBuffering) {
 			Serial.write(rxByte);
 		}
+
+    if (ESPNewline) {
+      Serial.println();
+      ESPNewline = false;
+    }
 
 		if (rxByte == 126) {
 			ESPReplyBufferIndex = 0;
@@ -289,22 +292,22 @@ void take_sample() {
 
   sampleAccumulator.numSamples++;
 
-  Serial.print("Taking sample num: ");
-  Serial.println(sampleAccumulator.numSamples);
-  Serial.print("Timestamp: ");
-  Serial.println(sampleAccumulator.timestamp);
-  Serial.print("Wind Speed: ");
-  Serial.println(sampleAccumulator.windSpeed);
-  Serial.print("Wind Direction: ");
-  Serial.println(sampleAccumulator.windDirection);
-  Serial.print("Battery Voltage: ");
-  Serial.println(sampleAccumulator.battery);
-  Serial.print("Temp: ");
-  Serial.print((sampleAccumulator.temperature*1.8)+32);
-  Serial.print("*F\nHumidity: ");
-  Serial.print(sampleAccumulator.humidity);
-  Serial.print("%\nPressure: ");
-  Serial.print(sampleAccumulator.pressure);
-  Serial.println(" mBar");
-  Serial.println();
+  // Serial.print("Taking sample num: ");
+  // Serial.println(sampleAccumulator.numSamples);
+  // Serial.print("Timestamp: ");
+  // Serial.println(sampleAccumulator.timestamp);
+  // Serial.print("Wind Speed: ");
+  // Serial.println(sampleAccumulator.windSpeed);
+  // Serial.print("Wind Direction: ");
+  // Serial.println(sampleAccumulator.windDirection);
+  // Serial.print("Battery Voltage: ");
+  // Serial.println(sampleAccumulator.battery);
+  // Serial.print("Temp: ");
+  // Serial.print((sampleAccumulator.temperature*1.8)+32);
+  // Serial.print("*F\nHumidity: ");
+  // Serial.print(sampleAccumulator.humidity);
+  // Serial.print("%\nPressure: ");
+  // Serial.print(sampleAccumulator.pressure);
+  // Serial.println(" mBar");
+  // Serial.println();
 }

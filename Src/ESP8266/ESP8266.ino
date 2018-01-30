@@ -1,4 +1,6 @@
+#include <ESP8266WiFi.h>
 #include "SoftwareSerial.h"
+
 #include "config.h"
 #include "helpers.h"
 
@@ -24,7 +26,13 @@ void setup()
   Serial.begin(19200);
   Serial.setDebugOutput(true);
 
-  ATmegaSerial.begin(2400);
+  ATmegaSerial.begin(ESP_ATMEGA_BAUD_RATE);
+
+  Serial.println(".......");
+  Serial.print("Initilizing ESP8266");
+
+  WiFi.mode(WIFI_OFF);
+	WiFi.persistent(false);
 }
 
 void loop() {
@@ -63,7 +71,11 @@ void loop() {
     if (ATmegaSerialCommand == ESP_MSG_PING) {
       ATmegaSerial.print(String("Pong: ")+ATmegaSerialBuffer);
     } else if (ATmegaSerialCommand == ESP_MSG_REQUEST) {
-      send_request(ATmegaSerialBuffer);
+      if (send_request(ATmegaSerialBuffer)) {
+        Serial.println("Succesfully sent request");
+      } else {
+        Serial.println("Request failed (!)");
+      }
     } else {
       ATmegaSerial.print("Recieved: ");
       ATmegaSerial.print(ATmegaSerialCommand, DEC);
@@ -79,8 +91,57 @@ void loop() {
   }
 }
 
-void send_request(char *filename) {
+bool send_request(char *url) {
+  if (!connect_to_wifi()) {
+    return false;
+  }
 
+  WiFiClient client;
+  client.setTimeout(1000);
+
+  Serial.print("[Connecting to ");
+  Serial.print(SERVER_IP_ADDRESS);
+  Serial.print(" ");
+
+	if (!client.connect(SERVER_IP_ADDRESS, SERVER_PORT)) {
+    Serial.println("Failed]");
+    return false;
+  }
+
+  Serial.println("Success!]");
+
+  // Send the request
+	Serial.println("[Sending Request]");
+  Serial.print(SERVER_IP_ADDRESS);
+  Serial.print(":");
+  Serial.print(SERVER_PORT);
+  Serial.println(url);
+
+	client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+		"Host: " + SERVER_IP_ADDRESS + "\r\n" +
+		"Connection: close\r\n\r\n");
+
+  unsigned long timeout = millis();
+  while (client.available() == 0) {
+    if (millis()-timeout > 5000) {
+      Serial.println("....Timed out [!]");
+      client.stop();
+      return false;
+    }
+  }
+
+  Serial.println("\n[Response:]");
+
+  while (client.available()) {
+    // It seems that readStringUntil blocks if it doesn't find the char again
+    String line = client.readStringUntil('\n');
+    Serial.println(line);
+  }
+
+  client.stop();
+  Serial.println("\n[Closed Client Connection]");
+
+  return true;
 }
 
 bool connect_to_wifi() {
@@ -92,32 +153,33 @@ bool connect_to_wifi() {
     return true;
   }
 
-
   IPAddress wifi_ip(MY_IP);
   IPAddress wifi_gateway(GATEWAY_IP);
   IPAddress wifi_subnet(SUBNET_MASK);
 
   WiFi.mode(WIFI_STA);
-	WiFi.config(wifi_ip, wifi_gateway, wifi_subnet);
+
+  if (!WiFi.config(wifi_ip, wifi_gateway, wifi_subnet)) {
+    return false;
+  }
+
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-  bool ledState = false;
   int timeout = 30000;
   while (WiFi.status() != WL_CONNECTED) {
-    delay(100);
-    timeout -= 100;
-    Serial.print('.');
-    ledState = !ledState;
-    mcp.digitalWrite(OK_LED_PIN, ledState);
+    delay(1);
+    timeout--;
+
+    if (timeout%50 == 0) {
+      Serial.print('.');
+    }
 
     if (timeout <= 0) {
       DEBUG_PRINTLN("Timeout (!)]");
-      mcp.digitalWrite(OK_LED_PIN, LOW);
       return false;
     }
   }
 
-  mcp.digitalWrite(OK_LED_PIN, LOW);
   DEBUG_PRINTLN("Success]");
   return true;
 }
@@ -126,4 +188,5 @@ bool disconnect_from_wifi() {
   DEBUG_PRINT("[Disconnecting From Wifi: ");
   bool result = WiFi.disconnect(true);
   DEBUG_PRINTLN(result?"Success]":"Failed (!)]");
+  return result;
 }
