@@ -27,12 +27,13 @@ void setup()
   Serial.setDebugOutput(true);
 
   ATmegaSerial.begin(ESP_ATMEGA_BAUD_RATE);
+  ATmegaSerial.println("................");
 
   Serial.println(".......");
   Serial.print("Initilizing ESP8266");
 
-  WiFi.mode(WIFI_OFF);
-	WiFi.persistent(false);
+  // WiFi.mode(WIFI_OFF);
+	// WiFi.persistent(false);
 }
 
 void loop() {
@@ -69,13 +70,17 @@ void loop() {
     ATmegaSerialState = STATE_WAIT;
 
     if (ATmegaSerialCommand == ESP_MSG_PING) {
-      ATmegaSerial.print(String("Pong: ")+ATmegaSerialBuffer);
+      ATmegaSerial.println(String("Pong: ")+ATmegaSerialBuffer);
     } else if (ATmegaSerialCommand == ESP_MSG_REQUEST) {
       if (send_request(ATmegaSerialBuffer)) {
         Serial.println("Succesfully sent request");
       } else {
         Serial.println("Request failed (!)");
       }
+    } else if (ATmegaSerialCommand == ESP_MSG_SLEEP) {
+      Serial.println("Recieved Sleep Command; Sleeping Now.");
+      delay(50);
+      ESP.deepSleep(0);
     } else {
       ATmegaSerial.print("Recieved: ");
       ATmegaSerial.print(ATmegaSerialCommand, DEC);

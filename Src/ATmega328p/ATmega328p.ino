@@ -27,7 +27,8 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 
 // Sample and Reading defines
 #define SAMPLE_INTERVAL 2000
-#define SAMPLES_PER_READING 5
+#define READING_INTERVAL SAMPLE_INTERVAL*5///300000 // 300000 = 5 minutes
+#define SAMPLES_PER_READING READING_INTERVAL/SAMPLE_INTERVAL
 
 // Wind Vane Calibration
 #define WIND_VANE_MIN 0
@@ -45,6 +46,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 
 #define ESP_TX_PIN 11
 #define ESP_RX_PIN 12
+#define ESP_RESET_PIN 13
 
 // Globals
 unsigned long numWeatherReadings = 0;
@@ -79,6 +81,8 @@ void setup() {
 
   // Esp serial
   ESPSerial.begin(ESP_ATMEGA_BAUD_RATE);
+
+  pinMode(ESP_RESET_PIN, INPUT); // Input while were not using it to not interfere with ESP programming
 
   // Inter-Chip interfaces
   Wire.begin();
@@ -131,8 +135,10 @@ void loop() {
   if (millis()-lastSampleMillis > SAMPLE_INTERVAL) {
     take_sample();
 
-    char message[] = "Hello!";
-    send_esp_serial(ESP_MSG_PING, message);
+    // Reset the ESP the sample before
+    if (sampleAccumulator.numSamples == SAMPLES_PER_READING-1) {
+      reset_esp();
+    }
   }
 
   if (sampleAccumulator.numSamples >= SAMPLES_PER_READING) {
@@ -148,9 +154,26 @@ void loop() {
     printWeatherReading(currentReading);
     Serial.println();
 
+    while (ESPSerial.available()) {
+      recv_esp_serial();
+    }
+
     String outputUrl = generate_request_url(currentReading);
     send_esp_serial(ESP_MSG_REQUEST, outputUrl.c_str());
+    delay(5);
+    send_esp_serial(ESP_MSG_SLEEP, "true");
   }
+}
+
+void reset_esp() {
+  pinMode(ESP_RESET_PIN, OUTPUT);
+  digitalWrite(ESP_RESET_PIN, LOW);
+  delay(5);
+  digitalWrite(ESP_RESET_PIN, HIGH);
+  delay(5);
+  digitalWrite(ESP_RESET_PIN, LOW);
+  pinMode(ESP_RESET_PIN, INPUT);
+  delay(10);
 }
 
 void send_esp_serial(char messageType, const char *value) {
@@ -171,6 +194,8 @@ bool recv_esp_serial() {
 		uint8_t rxByte = ESPSerial.read();
 
 		if (ESPNewline) {
+			ESPNewline = false;
+
 			if (!ESPReplyBuffering) {
 				Serial.write("ESP (recv)");
 			}
@@ -180,11 +205,6 @@ bool recv_esp_serial() {
 		if (!ESPReplyBuffering) {
 			Serial.write(rxByte);
 		}
-
-    if (ESPNewline) {
-      Serial.println();
-      ESPNewline = false;
-    }
 
 		if (rxByte == 126) {
 			ESPReplyBufferIndex = 0;
@@ -292,22 +312,13 @@ void take_sample() {
 
   sampleAccumulator.numSamples++;
 
-  // Serial.print("Taking sample num: ");
-  // Serial.println(sampleAccumulator.numSamples);
-  // Serial.print("Timestamp: ");
-  // Serial.println(sampleAccumulator.timestamp);
-  // Serial.print("Wind Speed: ");
-  // Serial.println(sampleAccumulator.windSpeed);
-  // Serial.print("Wind Direction: ");
-  // Serial.println(sampleAccumulator.windDirection);
-  // Serial.print("Battery Voltage: ");
-  // Serial.println(sampleAccumulator.battery);
-  // Serial.print("Temp: ");
-  // Serial.print((sampleAccumulator.temperature*1.8)+32);
-  // Serial.print("*F\nHumidity: ");
-  // Serial.print(sampleAccumulator.humidity);
-  // Serial.print("%\nPressure: ");
-  // Serial.print(sampleAccumulator.pressure);
-  // Serial.println(" mBar");
-  // Serial.println();
+  WeatherReading currentReading = get_averaged_accumulator(sampleAccumulator);
+  Serial.print("Taking sample num: ");
+  Serial.print(sampleAccumulator.numSamples);
+  Serial.print("/");
+  Serial.print(SAMPLES_PER_READING);
+  Serial.print(" for reading ");
+  Serial.println(numWeatherReadings);
+  printWeatherReading(currentReading);
+  Serial.println();
 }
