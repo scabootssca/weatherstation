@@ -21,6 +21,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 
 #include "config.h"
 #include "helpers.h"
+#include "weather_readings.h"
 
 #include "RTClib.h"
 #include <Adafruit_BME280.h>
@@ -328,7 +329,7 @@ void take_sample() {
   Serial.print(" (mins) since ");
   print_pretty_timestamp(bootTime);
   Serial.println();
-  
+
   printWeatherReading(currentReading);
   Serial.println();
 }
