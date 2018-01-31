@@ -49,6 +49,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define ESP_RESET_PIN 13
 
 // Globals
+uint32_t bootTime;
 unsigned long numWeatherReadings = 0;
 unsigned long lastSampleMillis = 0;
 bool bmeConnected = false;
@@ -110,6 +111,9 @@ void setup() {
     // This will reflect the time that your sketch was compiled
     RTC.adjust(DateTime(DateTime(__DATE__, __TIME__) - TimeSpan(60*60*GMT_OFFSET)));
   }
+
+  // Store boot time
+  bootTime = RTC.now().unixtime();
 
   // BME280
   bmeConnected = bmeSensor.begin(0x76);
@@ -319,6 +323,12 @@ void take_sample() {
   Serial.print(SAMPLES_PER_READING);
   Serial.print(" for reading ");
   Serial.println(numWeatherReadings);
+  Serial.print("Uptime: ");
+  Serial.print((read_timestamp()-bootTime)/60.0);
+  Serial.print(" (mins) since ");
+  print_pretty_timestamp(bootTime);
+  Serial.println();
+  
   printWeatherReading(currentReading);
   Serial.println();
 }
