@@ -32,6 +32,7 @@ void setup()
   Serial.println(".......");
   Serial.print("Initilizing ESP8266");
 
+  WiFi.setAutoConnect(false);
   // WiFi.mode(WIFI_OFF);
 	// WiFi.persistent(false);
 }
@@ -162,13 +163,14 @@ bool connect_to_wifi() {
   IPAddress wifi_gateway(GATEWAY_IP);
   IPAddress wifi_subnet(SUBNET_MASK);
 
-  WiFi.mode(WIFI_STA);
 
-  if (!WiFi.config(wifi_ip, wifi_gateway, wifi_subnet)) {
+  WiFi.hostname("weather_station");
+  WiFi.config(wifi_ip, wifi_gateway, wifi_subnet);
+  //WiFi.mode(WIFI_STA);
+
+  if (!WiFi.begin(WIFI_SSID, WIFI_PASS)) {
     return false;
   }
-
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   int timeout = 30000;
   while (WiFi.status() != WL_CONNECTED) {
