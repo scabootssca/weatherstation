@@ -15,17 +15,6 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 */
 #define CLEAN_START 0 // This will mark SRAM as unpopulated and update rtc to compile time
 
-// Includes
-#include <Wire.h>
-#include <SoftwareSerial.h>
-
-#include "config.h"
-#include "helpers.h"
-#include "weather_readings.h"
-
-#include "RTClib.h"
-#include <Adafruit_BME280.h>
-
 // Sample and Reading defines
 #define SAMPLE_INTERVAL 2000
 #define READING_INTERVAL SAMPLE_INTERVAL*5///300000 // 300000 = 5 minutes
@@ -52,8 +41,22 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define WIND_VANE_ADC_PIN A1 // PB1
 
 #define ESP_RESET_PIN 2 // PD2
+#define SRAM_CS_PIN 3   // PD3
 #define ESP_TX_PIN 5    // PD5
 #define ESP_RX_PIN 6    // PD6
+
+// Includes
+#include <Wire.h>
+#include <SPI.h>
+#include <SoftwareSerial.h>
+
+#include "config.h"
+#include "helpers.h"
+#include "weather_readings.h"
+
+#include "RTClib.h"
+#include <Adafruit_BME280.h>
+#include "MCP_23A1024.h"
 
 // Globals
 uint32_t bootTime;
@@ -87,6 +90,8 @@ void setup() {
   Serial.println("\n");
   Serial.println("Initilizing ATmega328p");
 
+  Serial.print("Int size: ");
+
   // Esp serial
   ESPSerial.begin(ESP_ATMEGA_BAUD_RATE);
 
@@ -100,6 +105,7 @@ void setup() {
 
   // Inter-Chip interfaces
   Wire.begin();
+  SPI.begin();
 
   // Pins
   pinMode(ANEMOMETER_PIN, INPUT);
@@ -125,6 +131,16 @@ void setup() {
     RTC.adjust(DateTime(DateTime(__DATE__, __TIME__) - TimeSpan(60*60*GMT_OFFSET)));
   }
 
+  // SRAM init
+  sram_init(SRAM_CS_PIN); // Will set pin mode and such
+
+  // Try and restore from previous
+  if (sram_restore(&sampleAccumulator)) {
+    Serial.println("Sucessfully restored state from SRAM.");
+  } else {
+    Serial.println("Previous state not found in SRAM, starting fresh.");
+  }
+
   // Store boot time
   bootTime = RTC.now().unixtime();
 
@@ -145,6 +161,9 @@ void setup() {
     Serial.println("BME280 sensor is not detected at i2caddr 0x76; check wiring.");
   }
 
+  Serial.println("Finished Initilizing");
+  Serial.println();
+
   digitalWrite(OK_LED_PIN, LOW);
   digitalWrite(ERROR_LED_PIN, LOW);
 }
@@ -153,6 +172,7 @@ void loop() {
   recv_esp_serial();
 
   if (millis()-lastSampleMillis > SAMPLE_INTERVAL) {
+    digitalWrite(OK_LED_PIN, HIGH);
     take_sample();
 
     // Reset the ESP the sample before
@@ -160,8 +180,6 @@ void loop() {
       reset_esp();
     }
 
-    digitalWrite(OK_LED_PIN, HIGH);
-    delay(1000);
     digitalWrite(OK_LED_PIN, LOW);
   }
 
@@ -336,6 +354,9 @@ void take_sample() {
 
   sampleAccumulator.numSamples++;
 
+  sram_write_accumulator(&sampleAccumulator);
+
+  #if DEBUG
   WeatherReading currentReading = get_averaged_accumulator(sampleAccumulator);
   Serial.print("Taking sample num: ");
   Serial.print(sampleAccumulator.numSamples);
@@ -351,4 +372,5 @@ void take_sample() {
 
   printWeatherReading(currentReading);
   Serial.println();
+  #endif
 }
