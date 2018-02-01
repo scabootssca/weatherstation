@@ -24,76 +24,6 @@ struct WeatherReadingAccumulator {
 	uint32_t numBatterySamples = 0;
 };
 
-
-void printWeatherReading(WeatherReading reading) {
-	Serial.print("Timestamp: ");
-	print_pretty_timestamp(reading.timestamp);
-	Serial.println();
-
-	Serial.print("Temp: ");
-	Serial.print(reading.temperature);
-	Serial.println("*C");
-	Serial.print("Pressure: ");
-	Serial.print(reading.pressure);
-	Serial.println("hpa");
-	Serial.print("Humidity: ");
-	Serial.print(reading.humidity);
-	Serial.println('%');
-	Serial.print("Battery: ");
-	Serial.print(reading.battery);
-	Serial.println("mV");
-	Serial.print("Wind Speed: ");
-	Serial.print(reading.windSpeed);
-	Serial.println("mph");
-	Serial.print("Wind Direction: ");
-	Serial.print(reading.windDirection);
-	Serial.println("deg");
-}
-
-void printWeatherReading(WeatherReadingAccumulator reading) {
-	// For displaying them in local time
-	DateTime readingTimeLocal = DateTime(DateTime(reading.timestamp) + TimeSpan(60*60*GMT_OFFSET));
-
-	Serial.print("Timestamp: ");
-	Serial.print(uint32_t(reading.timestamp/reading.numSamples), DEC);
-	Serial.print(" ");
-	Serial.print(readingTimeLocal.month(), DEC);
-	Serial.print('/');
-	Serial.print(readingTimeLocal.day(), DEC);
-	Serial.print('/');
-	Serial.print(readingTimeLocal.year(), DEC);
-	Serial.print(' ');
-	Serial.print(readingTimeLocal.hour(), DEC);
-	Serial.print(':');
-	Serial.print(readingTimeLocal.minute(), DEC);
-	Serial.print(':');
-	Serial.print(readingTimeLocal.second(), DEC);
-	Serial.println();
-
-	Serial.print("Temp: ");
-	Serial.print(reading.temperature/reading.numSamples);
-	Serial.println("*C");
-	Serial.print("Pressure: ");
-	Serial.print(reading.pressure/reading.numSamples);
-	Serial.println("hpa");
-	Serial.print("Humidity: ");
-	Serial.print(reading.humidity/reading.numSamples);
-	Serial.println('%');
-	Serial.print("Battery: ");
-	Serial.print(reading.battery/reading.numBatterySamples);
-	Serial.println("mV");
-	Serial.print("Wind Speed: ");
-	Serial.print(reading.windSpeed/reading.numSamples);
-	Serial.println("mph");
-	Serial.print("Wind Direction: ");
-	Serial.print(reading.windDirection/reading.numSamples);
-	Serial.println("deg");
-	Serial.print("Num Samples: ");
-	Serial.println(reading.numSamples);
-	Serial.print("Num Battery Samples: ");
-	Serial.println(reading.numBatterySamples);
-}
-
 void zeroWeatherReading(WeatherReading *reading) {
 	reading->timestamp = 0;
 	reading->temperature = 0;
@@ -150,6 +80,42 @@ WeatherReading get_averaged_accumulator(WeatherReadingAccumulator src) {
 	return dest;
 }
 
+void printWeatherReading(WeatherReading reading) {
+  // For displaying them in local time
+	DateTime readingTimeLocal = DateTime(DateTime(reading.timestamp) + TimeSpan(60*60*GMT_OFFSET));
+
+	Serial.print("Timestamp: ");
+	print_pretty_timestamp(readingTimeLocal.unixtime());
+	Serial.println();
+
+	Serial.print("Temp: ");
+	Serial.print(reading.temperature);
+	Serial.println("*C");
+	Serial.print("Pressure: ");
+	Serial.print(reading.pressure);
+	Serial.println("hpa");
+	Serial.print("Humidity: ");
+	Serial.print(reading.humidity);
+	Serial.println('%');
+	Serial.print("Battery: ");
+	Serial.print(reading.battery);
+	Serial.println("mV");
+	Serial.print("Wind Speed: ");
+	Serial.print(reading.windSpeed);
+	Serial.println("mph");
+	Serial.print("Wind Direction: ");
+	Serial.print(reading.windDirection);
+	Serial.println("deg");
+}
+
+void printWeatherReading(WeatherReadingAccumulator sampleAccumulator) {
+  printWeatherReading(get_averaged_accumulator(sampleAccumulator));
+
+	Serial.print("Num Samples: ");
+	Serial.println(sampleAccumulator.numSamples);
+	Serial.print("Num Battery Samples: ");
+	Serial.println(sampleAccumulator.numBatterySamples);
+}
 
 String generate_request_url(WeatherReading weatherReading) {
 	// Make the url

@@ -19,6 +19,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define SAMPLE_INTERVAL 2000
 #define READING_INTERVAL SAMPLE_INTERVAL*5///300000 // 300000 = 5 minutes
 #define SAMPLES_PER_READING READING_INTERVAL/SAMPLE_INTERVAL
+#define MAX_FAILED_SUBMITS 3
 
 // Wind Vane Calibration
 #define WIND_VANE_MIN 0
@@ -27,7 +28,6 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 // Anemometer Calibration (Linear Association)
 // rpm/coef = wind speed in mph
 #define ANEMOMETER_CALIBRATION_COEF 0.09739260404185239 // 10.2677201193868 = samples per 1mph
-
 
 // Pins
 #define ANEMOMETER_PIN 8 // PB0
@@ -60,14 +60,17 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 
 // Globals
 uint32_t bootTime;
-unsigned long numWeatherReadings = 0;
-unsigned long lastSampleMillis = 0;
+
 bool bmeConnected = false;
 
+unsigned long lastSampleMillis = 0;
 volatile unsigned int anemometerPulses = 0;
 unsigned long lastAnemometerReadingMillis = 0;
 
 WeatherReadingAccumulator sampleAccumulator;
+
+uint32_t weatherReadingWriteIndex = 0;
+uint32_t weatherReadingReadIndex = 0;
 
 // Structures/Classes
 RTC_DS1307 RTC; // Real Time Clock
@@ -89,8 +92,6 @@ void setup() {
 
   Serial.println("\n");
   Serial.println("Initilizing ATmega328p");
-
-  Serial.print("Int size: ");
 
   // Esp serial
   ESPSerial.begin(ESP_ATMEGA_BAUD_RATE);
@@ -134,16 +135,30 @@ void setup() {
   // SRAM init
   sram_init(SRAM_CS_PIN); // Will set pin mode and such
 
-  // Try and restore from previous
+  Serial.println("Attempting to restore from SRAM after 200ms");
+  delay(200);
+
+  // Try and restore from prevuint32_t weatherReadingWriteIndex = 0;
   if (!CLEAN_START && sram_restore(&sampleAccumulator)) {
-    Serial.println("Sucessfully restored state from SRAM.");
+    sram_read(&weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
+    sram_read(&weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
+
+    Serial.println(F("Sucessfully restored state from SRAM."));
   } else {
     if (CLEAN_START) {
-      Serial.println("Not restoring from SRAM, CLEAN_START");
+      Serial.println(F("Not restoring from SRAM, CLEAN_START"));
     } else {
-      Serial.println("Previous state not found in SRAM, starting fresh.");
+      Serial.println(F("Previous state not found in SRAM, starting fresh."));
     }
+
+    sram_write(weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
+    sram_write(weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
   }
+
+  Serial.print("Reading Read Index: ");
+  Serial.println(weatherReadingReadIndex);
+  Serial.print("Reading Write Index: ");
+  Serial.println(weatherReadingWriteIndex);
 
   // Store boot time
   bootTime = RTC.now().unixtime();
@@ -162,10 +177,10 @@ void setup() {
       bmeSensor.STANDBY_MS_0_5
     );
   } else {
-    Serial.println("BME280 sensor is not detected at i2caddr 0x76; check wiring.");
+    Serial.println(F("BME280 sensor is not detected at i2caddr 0x76; check wiring."));
   }
 
-  Serial.println("Finished Initilizing");
+  Serial.println(F("Finished Initilizing"));
   Serial.println();
 
   digitalWrite(OK_LED_PIN, LOW);
@@ -188,28 +203,109 @@ void loop() {
   }
 
   if (sampleAccumulator.numSamples >= SAMPLES_PER_READING) {
+    // Average the accumuator as a reading and store it
     WeatherReading currentReading = get_averaged_accumulator(sampleAccumulator);
-    zeroWeatherReading(&sampleAccumulator);
+    sram_write_reading(&currentReading, weatherReadingWriteIndex);
 
-    numWeatherReadings++;
+    // Then zero the accumulator and store it
+    zeroWeatherReading(&sampleAccumulator);
+    sram_write_accumulator(&sampleAccumulator);
 
     Serial.println();
     Serial.print("--(WEATHER READING (");
-    Serial.print(numWeatherReadings);
+    Serial.print(weatherReadingWriteIndex);
     Serial.println("))--");
     printWeatherReading(currentReading);
     Serial.println();
 
+    // Update the index and save it to sram
+    weatherReadingWriteIndex++;
+
+    if (weatherReadingWriteIndex >= SRAM_MAX_READINGS) {
+      weatherReadingWriteIndex = 0;
+    }
+
+    sram_write(weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
+
+    submit_stored_readings();
+  }
+}
+
+uint32_t read_timestamp() {
+  return RTC.now().unixtime();
+}
+
+void submit_stored_readings() {
+  // Have this take the latest reading as an argument and submit that first then any that are stored afterwards
+  int failedSubmits = 0;
+  uint32_t submitStartTimestamp = read_timestamp();
+  WeatherReading currentReading;
+
+  Serial.println(F("[Starting Submit Stored Readings]"));
+
+  if (weatherReadingReadIndex == weatherReadingWriteIndex) {
+    Serial.println(F("[Nothing to submit]"));
+    return;
+  }
+
+  while (failedSubmits < MAX_FAILED_SUBMITS) {
     while (ESPSerial.available()) {
       recv_esp_serial();
     }
 
-    String outputUrl = generate_request_url(currentReading);
-    send_esp_serial(ESP_MSG_REQUEST, outputUrl.c_str());
-    delay(5);
-    send_esp_serial(ESP_MSG_SLEEP, "true");
+    bool advanceReadPointer = false;
+
+    sram_read_reading(&currentReading, weatherReadingReadIndex);
+
+    // Check for read corruption
+    if (currentReading.timestamp > submitStartTimestamp) {
+      Serial.println("Corrupted reading: Future timestamp, Skipping.");
+      advanceReadPointer = true;
+    } else {
+      Serial.print(F("Weather Reading Index: "));
+      Serial.println(weatherReadingReadIndex);
+      printWeatherReading(currentReading);
+
+      String outputUrl = generate_request_url(currentReading);
+      send_esp_serial(ESP_MSG_REQUEST, outputUrl.c_str());
+      delay(1);
+
+      advanceReadPointer = true;
+    }
+
+    // If we need to goto the next reading
+    if (advanceReadPointer) {
+      weatherReadingReadIndex++;
+
+      if (weatherReadingReadIndex >= SRAM_MAX_READINGS) {
+        weatherReadingReadIndex = 0;
+      }
+
+      // Store it
+      sram_write(weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
+
+      // If we've submitted all then break
+      if (weatherReadingReadIndex == weatherReadingWriteIndex) {
+        break;
+      }
+
+    } else {
+      failedSubmits++;
+
+      if (failedSubmits >= MAX_FAILED_SUBMITS) {
+        Serial.println("Failed - Aborting (!)");
+        break;
+      }
+
+      Serial.print(F("Failed - Retries Left: "));
+      Serial.println(MAX_FAILED_SUBMITS-failedSubmits);
+    }
   }
+
+  delay(5);
+  send_esp_serial(ESP_MSG_SLEEP, "true");
 }
+
 
 void reset_esp() {
   pinMode(ESP_RESET_PIN, OUTPUT);
@@ -264,11 +360,6 @@ bool recv_esp_serial() {
 			ESPReplyBuffer[ESPReplyBufferIndex++] = rxByte;
 		}
 	}
-}
-
-
-uint32_t read_timestamp() {
-  return RTC.now().unixtime();
 }
 
 float read_anemometer() {
@@ -361,20 +452,18 @@ void take_sample() {
   sram_write_accumulator(&sampleAccumulator);
 
   #if DEBUG
-  WeatherReading currentReading = get_averaged_accumulator(sampleAccumulator);
-  Serial.print("Taking sample num: ");
+  Serial.print("Taking sample: ");
   Serial.print(sampleAccumulator.numSamples);
   Serial.print("/");
-  Serial.print(SAMPLES_PER_READING);
-  Serial.print(" for reading ");
-  Serial.println(numWeatherReadings);
+  Serial.println(SAMPLES_PER_READING);
   Serial.print("Uptime: ");
   Serial.print((read_timestamp()-bootTime)/60.0);
   Serial.print(" (mins) since ");
   print_pretty_timestamp(bootTime);
   Serial.println();
 
-  printWeatherReading(currentReading);
+  printWeatherReading(sampleAccumulator);
+
   Serial.println();
   #endif
 }
