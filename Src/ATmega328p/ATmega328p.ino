@@ -41,13 +41,19 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 
 
 // Pins
-#define ANEMOMETER_PIN 2
-#define BATTERY_ADC_PIN A0
-#define WIND_VANE_ADC_PIN A3
+#define ANEMOMETER_PIN 8 // PB0
+#define OK_LED_PIN 9     // PB1
+#define ERROR_LED_PIN 10 // PB2
+#define MOSI_PIN 11      // PB3
+#define MISO_PIN 12      // PB4
+#define SCK_PIN 13       // PB5
 
-#define ESP_TX_PIN 11
-#define ESP_RX_PIN 12
-#define ESP_RESET_PIN 13
+#define BATTERY_ADC_PIN A0   // PC0
+#define WIND_VANE_ADC_PIN A1 // PB1
+
+#define ESP_RESET_PIN 2 // PD2
+#define ESP_TX_PIN 5    // PD5
+#define ESP_RX_PIN 6    // PD6
 
 // Globals
 uint32_t bootTime;
@@ -85,6 +91,12 @@ void setup() {
   ESPSerial.begin(ESP_ATMEGA_BAUD_RATE);
 
   pinMode(ESP_RESET_PIN, INPUT); // Input while were not using it to not interfere with ESP programming
+
+  // Indicator LEDS
+  pinMode(OK_LED_PIN, OUTPUT);
+  pinMode(ERROR_LED_PIN, OUTPUT);
+  digitalWrite(OK_LED_PIN, HIGH);
+  digitalWrite(ERROR_LED_PIN, HIGH);
 
   // Inter-Chip interfaces
   Wire.begin();
@@ -132,6 +144,9 @@ void setup() {
   } else {
     Serial.println("BME280 sensor is not detected at i2caddr 0x76; check wiring.");
   }
+
+  digitalWrite(OK_LED_PIN, LOW);
+  digitalWrite(ERROR_LED_PIN, LOW);
 }
 
 void loop() {
@@ -144,6 +159,10 @@ void loop() {
     if (sampleAccumulator.numSamples == SAMPLES_PER_READING-1) {
       reset_esp();
     }
+
+    digitalWrite(OK_LED_PIN, HIGH);
+    delay(1000);
+    digitalWrite(OK_LED_PIN, LOW);
   }
 
   if (sampleAccumulator.numSamples >= SAMPLES_PER_READING) {
