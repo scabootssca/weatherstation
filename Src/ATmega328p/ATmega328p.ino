@@ -135,10 +135,14 @@ void setup() {
   sram_init(SRAM_CS_PIN); // Will set pin mode and such
 
   // Try and restore from previous
-  if (sram_restore(&sampleAccumulator)) {
+  if (!CLEAN_START && sram_restore(&sampleAccumulator)) {
     Serial.println("Sucessfully restored state from SRAM.");
   } else {
-    Serial.println("Previous state not found in SRAM, starting fresh.");
+    if (CLEAN_START) {
+      Serial.println("Not restoring from SRAM, CLEAN_START");
+    } else {
+      Serial.println("Previous state not found in SRAM, starting fresh.");
+    }
   }
 
   // Store boot time

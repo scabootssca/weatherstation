@@ -7,7 +7,7 @@ On Esp:
   long: 4
 */
 //
-#define SRAM_DEBUG 1
+#define SRAM_DEBUG 0
 #define SRAM_MODE_READ 0
 #define SRAM_MODE_WRITE 1
 #define SRAM_MAX_ADDRESS 0x1FFFF // 131072 (2^17) addresses
@@ -114,38 +114,36 @@ void sram_end_transaction() {
 }
 
 uint8_t sram_transfer(uint8_t value) {
+  uint8_t result = SPI.transfer(value);
+
+  #if SRAM_DEBUG > 1
   Serial.print("Sending (uint8_t): ");
   print_bin(value, 8, false);
   Serial.println();
-
-  uint8_t result = SPI.transfer(value);
-
   Serial.print("Recieved (uint8_t): ");
   print_bin(result, 16, false);
   Serial.println();
+  #endif
 
   return result;
 }
 
 uint16_t sram_transfer(uint16_t value) {
+  uint16_t result = SPI.transfer16(value);
+
+  #if SRAM_DEBUG > 1
   Serial.print("Sending (uint16_t): ");
   print_bin(value, 16, false);
   Serial.println();
-
-  uint16_t result = SPI.transfer16(value);
-
   Serial.print("Recieved (uint16_t): ");
   print_bin(result, 16, false);
   Serial.println();
+  #endif
 
   return result;
 }
 
 uint32_t sram_transfer(uint32_t value) {
-  Serial.print("Sending (uint32_t): ");
-  print_bin(value, 32, false);
-  Serial.println();
-
   union {
     uint32_t value;
 
@@ -160,19 +158,19 @@ uint32_t sram_transfer(uint32_t value) {
   recv.bit0 = SPI.transfer16(send.bit0);
   recv.bit1 = SPI.transfer16(send.bit1);
 
-
+  #if SRAM_DEBUG > 1
+  Serial.print("Sending (uint32_t): ");
+  print_bin(value, 32, false);
+  Serial.println();
   Serial.print("Recieved (uint32_t): ");
   print_bin(recv.value, 32, false);
   Serial.println();
+  #endif
 
   return recv.value;
 }
 
 uint64_t sram_transfer(uint64_t value) {
-  Serial.print("Sending (uint64_t): ");
-  print_bin(value, 64, false);
-  Serial.println();
-
   union {
     uint64_t value;
 
@@ -191,16 +189,21 @@ uint64_t sram_transfer(uint64_t value) {
   recv.bit2 = SPI.transfer16(send.bit2);
   recv.bit3 = SPI.transfer16(send.bit3);
 
+  #if SRAM_DEBUG > 1
+  Serial.print("Sending (uint64_t): ");
+  print_bin(value, 64, false);
+  Serial.println();
   Serial.print("Recieved (uint64_t): ");
   print_bin(recv.value, 64, false);
   Serial.println();
+  #endif
 
   return recv.value;
 }
 
 void sram_read_accumulator(WeatherReadingAccumulator *sampleAccumulator) {
   sram_begin_transaction(SRAM_MODE_READ, SRAM_ADDR_ACCUMULATOR, SRAM_SIZE_ACCUMULATOR);
-  
+
   sampleAccumulator->timestamp = sram_transfer(uint64_t(0));
   sampleAccumulator->temperature = static_cast<double>(sram_transfer(uint64_t(0)));
   sampleAccumulator->humidity = static_cast<double>(sram_transfer(uint64_t(0)));
@@ -251,6 +254,10 @@ bool sram_restore(WeatherReadingAccumulator *sampleAccumulator) {
   // Read the accumulator here
   if (previouslyPopulated) {
     sram_read_accumulator(sampleAccumulator);
+
+    Serial.println("Restored Accumulator: ");
+    printWeatherReading(*sampleAccumulator);
+
   } else {
     sram_write_accumulator(sampleAccumulator);
   }
