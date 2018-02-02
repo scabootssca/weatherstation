@@ -17,8 +17,9 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 
 // Sample and Reading defines
 #define SAMPLE_INTERVAL 2000
-#define READING_INTERVAL SAMPLE_INTERVAL*5///300000 // 300000 = 5 minutes
+#define READING_INTERVAL 300000 //SAMPLE_INTERVAL*5///300000 // 300000 = 5 minutes
 #define SAMPLES_PER_READING READING_INTERVAL/SAMPLE_INTERVAL
+#define BATTERY_SAMPLE_MODULO 25
 #define MAX_FAILED_SUBMITS 3
 
 // Wind Vane Calibration
@@ -37,13 +38,17 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define MISO_PIN 12      // PB4
 #define SCK_PIN 13       // PB5
 
-#define BATTERY_ADC_PIN A0   // PC0
-#define WIND_VANE_ADC_PIN A1 // PB1
+#define BAT_ADC_PIN A0       // PC0
+#define REF_ADC_PIN A1       // PC1
+#define SOLAR_ENABLE_PIN A2  // PC2
+#define WIND_VANE_ADC_PIN A3 // PC3
 
-#define ESP_RESET_PIN 2 // PD2
-#define SRAM_CS_PIN 3   // PD3
-#define ESP_TX_PIN 5    // PD5
-#define ESP_RX_PIN 6    // PD6
+#define ESP_RESET_PIN 2      // PD2
+#define SRAM_CS_PIN 3        // PD3
+#define REFV_ENABLE_PIN 4    // PD4
+#define ESP_TX_PIN 5         // PD5
+#define ESP_RX_PIN 6         // PD6
+#define BAT_DIV_ENABLE_PIN 7 // PD7
 
 // Includes
 #include <Wire.h>
@@ -104,6 +109,19 @@ void setup() {
   digitalWrite(OK_LED_PIN, HIGH);
   digitalWrite(ERROR_LED_PIN, HIGH);
 
+  // Battery pins
+  pinMode(BAT_ADC_PIN, INPUT);
+
+  pinMode(BAT_DIV_ENABLE_PIN, OUTPUT);
+  digitalWrite(BAT_DIV_ENABLE_PIN, LOW);
+
+  pinMode(REFV_ENABLE_PIN, OUTPUT);
+  digitalWrite(REFV_ENABLE_PIN, HIGH);
+
+  // Solar panel control pin
+  pinMode(SOLAR_ENABLE_PIN, OUTPUT);
+  digitalWrite(SOLAR_ENABLE_PIN, HIGH);
+
   // Inter-Chip interfaces
   Wire.begin();
   SPI.begin();
@@ -114,7 +132,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(ANEMOMETER_PIN), anemometerISR, RISING);
   sei();
 
-  pinMode(BATTERY_ADC_PIN, INPUT);
+
   pinMode(WIND_VANE_ADC_PIN, INPUT);
 
   // Clock
@@ -306,6 +324,66 @@ void submit_stored_readings() {
   send_esp_serial(ESP_MSG_SLEEP, "true");
 }
 
+float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampleBits=1) {
+  // Oversample for 10 -> 10+oversampleBits bit adc resolution
+  // 4^additionalBits
+  int numSamples = (int)pow(4.0, oversampleBits);
+
+	float refPinReading = 0.0;
+	float channelPinReading = 0.0;
+
+	// Get the vcc mV
+	//////////////////////////////
+	float referencePinMv = 2495; //2500.0;
+
+	digitalWrite(REFV_ENABLE_PIN, LOW);
+	delay(10); // For refV to stabilize
+
+	// Select what we want
+	analogRead(REF_ADC_PIN);
+
+	for (int i=0; i<numSamples; i++) {
+		refPinReading += analogRead(REF_ADC_PIN);
+    yield();
+	}
+
+	refPinReading /= numSamples;
+
+	digitalWrite(REFV_ENABLE_PIN, HIGH);
+
+	float vccMv = ( referencePinMv / refPinReading ) * 1023;
+
+	// Get the channel mV
+	//////////////////////////////
+	analogRead(channel);
+
+	for (int i=0; i<numSamples; i++) {
+		channelPinReading += analogRead(channel);
+    yield();
+	}
+
+	channelPinReading /= numSamples;
+
+  float pinMv = (vccMv / 1023.0) * channelPinReading;
+	float readingMv = pinMv * ratio;
+
+	DEBUG_PRINT("ADC channel: ");
+	DEBUG_PRINT(channel);
+	DEBUG_PRINT(" refPin: ");
+	DEBUG_PRINT(refPinReading);
+  DEBUG_PRINT(" channelPin: ");
+  DEBUG_PRINT(channelPinReading);
+	DEBUG_PRINT(" vccMv: ");
+	DEBUG_PRINT(vccMv);
+	DEBUG_PRINT(" pinMv: ");
+	DEBUG_PRINT(pinMv);
+  DEBUG_PRINT(" readingMv: ");
+  DEBUG_PRINT(readingMv);
+	DEBUG_PRINT(" resultMv: ");
+	DEBUG_PRINTLN(readingMv+offset);
+
+  return readingMv + offset;
+}
 
 void reset_esp() {
   pinMode(ESP_RESET_PIN, OUTPUT);
@@ -384,20 +462,32 @@ int read_wind_vane() {
   return windDegrees;
 }
 
-int read_battery_voltage(float oversampleBits=3.0) {
-  // Oversample for 10 -> 13 bit adc resolution so we can get .6 mv Accuracy
-  // 4^additionalBits
-  float batteryAdcAccumulator = 0;
-  int numSamples = (int)pow(4.0, oversampleBits);
+float read_battery_voltage(float oversampleBits=3.0) {
+  //1.33511348465; // R2/R1 3.008/1.002
+  float dividerRatio = 1.335;
 
-  for (int i=0; i<numSamples; i++) {
-    batteryAdcAccumulator += analogRead(BATTERY_ADC_PIN);
-    yield();
-  }
+  // Disable the solar panel to not interfere with the readings
+  digitalWrite(SOLAR_ENABLE_PIN, LOW);
+  delay(10);
 
-  batteryAdcAccumulator /= numSamples;
+  // Switch on the voltage divider for the battery and charge the cap and stabilize reference voltage
+  digitalWrite(BAT_DIV_ENABLE_PIN, HIGH);
+  delay(20); // Wait a bit
 
-  return (batteryAdcAccumulator / 1023.0) * 5000;
+  // Voltage afterwards
+	float batteryVoltage = readADCVoltage(BAT_ADC_PIN, dividerRatio, 15, oversampleBits);
+
+  // Turn the divider back off
+  digitalWrite(BAT_DIV_ENABLE_PIN, LOW);
+
+  // Turn the solar panel back on
+  digitalWrite(SOLAR_ENABLE_PIN, HIGH);
+
+  // Output
+  DEBUG_PRINT("Battery Voltage: ");
+  DEBUG_PRINTLN(batteryVoltage);
+
+  return batteryVoltage;
 }
 
 void read_tph(double *dest) {
@@ -437,8 +527,10 @@ void take_sample() {
   sampleAccumulator.windSpeed += read_anemometer();
   sampleAccumulator.windDirection += read_wind_vane();
 
-  sampleAccumulator.battery += read_battery_voltage();
-  sampleAccumulator.numBatterySamples++;
+  if (sampleAccumulator.numSamples%BATTERY_SAMPLE_MODULO == 0){
+    sampleAccumulator.battery += read_battery_voltage();
+    sampleAccumulator.numBatterySamples++;
+  }
 
   double bmeReadings[3];
   read_tph(bmeReadings);

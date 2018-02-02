@@ -201,8 +201,32 @@ uint64_t sram_transfer(uint64_t value) {
   return recv.value;
 }
 
+uint32_t float_to_uint32(float value) {
+  union {
+    uint32_t intVal;
+    float floatVal;
+  } conversion;
+
+  conversion.floatVal = value;
+
+  return conversion.intVal;
+}
+
+float uint32_to_float(uint32_t value) {
+  union {
+    uint32_t intVal;
+    float floatVal;
+  } conversion;
+
+  conversion.intVal = value;
+
+  return conversion.floatVal;
+}
+
 void sram_read_accumulator(WeatherReadingAccumulator *sampleAccumulator) {
   sram_begin_transaction(SRAM_MODE_READ, SRAM_ADDR_ACCUMULATOR, SRAM_SIZE_ACCUMULATOR);
+
+
 
   sampleAccumulator->timestamp = sram_transfer(uint64_t(0));
   sampleAccumulator->temperature = static_cast<double>(sram_transfer(uint64_t(0)));
@@ -274,12 +298,12 @@ void sram_read_reading(WeatherReading *weatherReading, uint32_t readingIndex) {
   sram_begin_transaction(SRAM_MODE_READ, addrReading, SRAM_SIZE_READINGS);
 
   weatherReading->timestamp = sram_transfer(uint32_t(0));
-  weatherReading->temperature = static_cast<float>(sram_transfer(uint32_t(0)));
-  weatherReading->humidity = static_cast<float>(sram_transfer(uint32_t(0)));
-  weatherReading->pressure = static_cast<float>(sram_transfer(uint32_t(0)));
-  weatherReading->battery = static_cast<float>(sram_transfer(uint32_t(0)));
-  weatherReading->windSpeed = static_cast<float>(sram_transfer(uint32_t(0)));
-  weatherReading->windDirection = static_cast<float>(sram_transfer(uint32_t(0)));
+  weatherReading->temperature = uint32_to_float(sram_transfer(uint32_t(0)));
+  weatherReading->humidity = uint32_to_float(sram_transfer(uint32_t(0)));
+  weatherReading->pressure = uint32_to_float(sram_transfer(uint32_t(0)));
+  weatherReading->battery = uint32_to_float(sram_transfer(uint32_t(0)));
+  weatherReading->windSpeed = uint32_to_float(sram_transfer(uint32_t(0)));
+  weatherReading->windDirection = uint32_to_float(sram_transfer(uint32_t(0)));
 
   sram_end_transaction();
 }
@@ -293,12 +317,12 @@ void sram_write_reading(WeatherReading *weatherReading, uint32_t readingIndex) {
   sram_begin_transaction(SRAM_MODE_WRITE, addrReading, SRAM_SIZE_READINGS);
 
   sram_transfer(weatherReading->timestamp);
-  sram_transfer(static_cast<uint32_t>(weatherReading->temperature));
-  sram_transfer(static_cast<uint32_t>(weatherReading->humidity));
-  sram_transfer(static_cast<uint32_t>(weatherReading->pressure));
-  sram_transfer(static_cast<uint32_t>(weatherReading->battery));
-  sram_transfer(static_cast<uint32_t>(weatherReading->windSpeed));
-  sram_transfer(static_cast<uint32_t>(weatherReading->windDirection));
+  sram_transfer(float_to_uint32(weatherReading->temperature));
+  sram_transfer(float_to_uint32(weatherReading->humidity));
+  sram_transfer(float_to_uint32(weatherReading->pressure));
+  sram_transfer(float_to_uint32(weatherReading->battery));
+  sram_transfer(float_to_uint32(weatherReading->windSpeed));
+  sram_transfer(float_to_uint32(weatherReading->windDirection));
 
   sram_end_transaction();
 }
