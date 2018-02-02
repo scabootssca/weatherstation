@@ -82,10 +82,10 @@ WeatherReading get_averaged_accumulator(WeatherReadingAccumulator src) {
 
 void printWeatherReading(WeatherReading reading) {
   // For displaying them in local time
-	DateTime readingTimeLocal = DateTime(DateTime(reading.timestamp) + TimeSpan(60*60*GMT_OFFSET));
+	//DateTime readingTimeLocal = DateTime(DateTime(reading.timestamp) + TimeSpan(60*60*GMT_OFFSET));
 
 	Serial.print("Timestamp: ");
-	print_pretty_timestamp(readingTimeLocal.unixtime());
+	print_pretty_timestamp(reading.timestamp);//readingTimeLocal.unixtime());
 	Serial.println();
 
 	Serial.print("Temp: ");
