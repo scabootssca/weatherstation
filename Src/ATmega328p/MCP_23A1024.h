@@ -90,7 +90,7 @@ bool sram_begin_transaction(bool mode, uint32_t address, int size) {
   #endif
 
 
-  uint32_t spiHz = 10000000; /* Seems it doesn't it wants to take longer, so a slower clock */
+  uint32_t spiHz = 10000000;
   SPI.beginTransaction(SPISettings(spiHz, MSBFIRST, SPI_MODE0));
   digitalWrite(SRAM_CS_PIN, LOW);
   delay(1);
@@ -226,15 +226,14 @@ float uint32_to_float(uint32_t value) {
 void sram_read_accumulator(WeatherReadingAccumulator *sampleAccumulator) {
   sram_begin_transaction(SRAM_MODE_READ, SRAM_ADDR_ACCUMULATOR, SRAM_SIZE_ACCUMULATOR);
 
-
-
-  sampleAccumulator->timestamp = sram_transfer(uint64_t(0));
-  sampleAccumulator->temperature = static_cast<double>(sram_transfer(uint64_t(0)));
-  sampleAccumulator->humidity = static_cast<double>(sram_transfer(uint64_t(0)));
-  sampleAccumulator->pressure = static_cast<double>(sram_transfer(uint64_t(0)));
-  sampleAccumulator->battery = static_cast<double>(sram_transfer(uint64_t(0)));
-  sampleAccumulator->windSpeed = static_cast<double>(sram_transfer(uint64_t(0)));
-  sampleAccumulator->windDirection = static_cast<double>(sram_transfer(uint64_t(0)));
+  sampleAccumulator->timestamp = sram_transfer(uint32_t(0));
+  sampleAccumulator->temperature = static_cast<int64_t>(sram_transfer(uint64_t(0)));//static_cast<double>(sram_transfer(uint64_t(0)));
+  sampleAccumulator->humidity = sram_transfer(uint64_t(0));//static_cast<double>(sram_transfer(uint64_t(0)));
+  sampleAccumulator->pressure = sram_transfer(uint64_t(0));//static_cast<double>(sram_transfer(uint64_t(0)));
+  sampleAccumulator->battery = sram_transfer(uint64_t(0));//static_cast<double>(sram_transfer(uint64_t(0)));
+  sampleAccumulator->windSpeed = sram_transfer(uint64_t(0));//static_cast<double>(sram_transfer(uint64_t(0)));
+  sampleAccumulator->windDirection = sram_transfer(uint64_t(0));//static_cast<double>(sram_transfer(uint64_t(0)));
+  sampleAccumulator->rain = sram_transfer(uint64_t(0));//static_cast<double>(sram_transfer(uint64_t(0)));
 
   sampleAccumulator->numSamples = sram_transfer(uint32_t(0));
   sampleAccumulator->numBatterySamples = sram_transfer(uint32_t(0));
@@ -247,11 +246,12 @@ void sram_write_accumulator(WeatherReadingAccumulator *sampleAccumulator) {
 
   sram_transfer(sampleAccumulator->timestamp);
   sram_transfer(static_cast<uint64_t>(sampleAccumulator->temperature));
-  sram_transfer(static_cast<uint64_t>(sampleAccumulator->humidity));
-  sram_transfer(static_cast<uint64_t>(sampleAccumulator->pressure));
-  sram_transfer(static_cast<uint64_t>(sampleAccumulator->battery));
-  sram_transfer(static_cast<uint64_t>(sampleAccumulator->windSpeed));
-  sram_transfer(static_cast<uint64_t>(sampleAccumulator->windDirection));
+  sram_transfer(sampleAccumulator->humidity);
+  sram_transfer(sampleAccumulator->pressure);
+  sram_transfer(sampleAccumulator->battery);
+  sram_transfer(sampleAccumulator->windSpeed);
+  sram_transfer(sampleAccumulator->windDirection);
+  sram_transfer(sampleAccumulator->rain);
 
   sram_transfer(sampleAccumulator->numSamples);
   sram_transfer(sampleAccumulator->numBatterySamples);
@@ -266,9 +266,9 @@ bool sram_restore(WeatherReadingAccumulator *sampleAccumulator) {
   bool previouslyPopulated = (storedValue == SRAM_POPULATED_KEY);
   sram_end_transaction();
 
-  Serial.print("Stored value: ");
-  print_bin(storedValue, 16, false);
-  Serial.println();
+  // Serial.print("Stored value: ");
+  // print_bin(storedValue, 16, false);
+  // Serial.println();
 
   // Set the populated key
   sram_begin_transaction(SRAM_MODE_WRITE, SRAM_ADDR_POPULATED, SRAM_SIZE_POPULATED);
@@ -304,6 +304,7 @@ void sram_read_reading(WeatherReading *weatherReading, uint32_t readingIndex) {
   weatherReading->battery = uint32_to_float(sram_transfer(uint32_t(0)));
   weatherReading->windSpeed = uint32_to_float(sram_transfer(uint32_t(0)));
   weatherReading->windDirection = uint32_to_float(sram_transfer(uint32_t(0)));
+  weatherReading->rain = sram_transfer(uint32_t(0));
 
   sram_end_transaction();
 }
@@ -323,6 +324,7 @@ void sram_write_reading(WeatherReading *weatherReading, uint32_t readingIndex) {
   sram_transfer(float_to_uint32(weatherReading->battery));
   sram_transfer(float_to_uint32(weatherReading->windSpeed));
   sram_transfer(float_to_uint32(weatherReading->windDirection));
+  sram_transfer(weatherReading->rain);
 
   sram_end_transaction();
 }

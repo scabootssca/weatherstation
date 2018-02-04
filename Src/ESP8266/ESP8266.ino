@@ -1,8 +1,12 @@
 #include <ESP8266WiFi.h>
 #include "SoftwareSerial.h"
+//#include "SPISlave.h"
 
 #include "config.h"
 #include "helpers.h"
+
+#define RESULT_PIN D6
+#define SUCCESS_PIN D5
 
 #define ATMEGA_RX_PIN D1
 #define ATMEGA_TX_PIN D2
@@ -20,6 +24,49 @@ int ATmegaSerialIndex = 0;
 int ATmegaSerialState = STATE_WAIT;
 char ATmegaSerialCommand = 0;
 char ATmegaSerialLength = 0;
+//
+// void on_spi_data(uint8_t *data, size_t len) {
+//   String message = String((char *)data);
+//
+//   if(message.equals("Hello Slave!")) {
+//       SPISlave.setData("Hello Master!");
+//   } else if(message.equals("Are you alive?")) {
+//       char answer[33];
+//       sprintf(answer,"Alive for %u seconds!", millis() / 1000);
+//       SPISlave.setData(answer);
+//   } else {
+//       SPISlave.setData("Say what?");
+//   }
+//   Serial.printf("Question: %s\n", (char *)data);
+// }
+//
+// void on_spi_data_sent() {
+//   Serial.println("Answer Sent");
+// }
+//
+// void on_status(uint32_t data) {
+//   Serial.printf("Status: %u\n", data);
+//   SPISlave.setStatus(millis()); //set next status
+// }
+//
+// void on_status_sent() {
+//   Serial.println("Status Sent");
+// }
+//
+// void setup_spi_slave() {
+//   SPISlave.onData(on_spi_data);
+//   SPISlave.onDataSent(on_spi_data_sent);
+//   SPISlave.onStatus(on_status);
+//   SPISlave.onStatusSent(on_status_sent);
+//   SPISlave.begin();
+//
+//   // Set the status register (if the master reads it, it will read this value)
+//   SPISlave.setStatus(millis());
+//
+//   // Sets the data registers. Limited to 32 bytes at a time.
+//   // SPISlave.setData(uint8_t * data, size_t len); is also available with the same limitation
+//   SPISlave.setData("Ask me a question!");
+// }
 
 void setup()
 {
@@ -27,6 +74,7 @@ void setup()
   Serial.setDebugOutput(true);
 
   ATmegaSerial.begin(ESP_ATMEGA_BAUD_RATE);
+  // We print this to make the serial sync before the commands are sent
   ATmegaSerial.println("................");
 
   Serial.println(".......");
@@ -35,6 +83,13 @@ void setup()
   WiFi.setAutoConnect(false);
   // WiFi.mode(WIFI_OFF);
 	// WiFi.persistent(false);
+
+  pinMode(RESULT_PIN, OUTPUT);
+  pinMode(SUCCESS_PIN, OUTPUT);
+
+  digitalWrite(RESULT_PIN, LOW);
+  digitalWrite(SUCCESS_PIN, LOW);
+  //setup_spi_slave();
 }
 
 void loop() {
@@ -73,11 +128,18 @@ void loop() {
     if (ATmegaSerialCommand == ESP_MSG_PING) {
       ATmegaSerial.println(String("Pong: ")+ATmegaSerialBuffer);
     } else if (ATmegaSerialCommand == ESP_MSG_REQUEST) {
+      digitalWrite(RESULT_PIN, LOW);
+      digitalWrite(SUCCESS_PIN, LOW);
+
       if (send_request(ATmegaSerialBuffer)) {
+        digitalWrite(SUCCESS_PIN, HIGH);
         Serial.println("Succesfully sent request");
       } else {
+        digitalWrite(SUCCESS_PIN, LOW);
         Serial.println("Request failed (!)");
       }
+
+      digitalWrite(RESULT_PIN, HIGH);
     } else if (ATmegaSerialCommand == ESP_MSG_SLEEP) {
       Serial.println("Recieved Sleep Command; Sleeping Now.");
       delay(50);

@@ -9,16 +9,18 @@ struct WeatherReading {
 	float battery = 0;
 	float windSpeed = 0;
 	float windDirection = 0;
+	uint32_t rain = 0;
 };
 
 struct WeatherReadingAccumulator {
-	uint64_t timestamp;
-	double temperature = 0;
-	double humidity = 0;
-	double pressure = 0;
-	double battery = 0;
-	double windSpeed = 0;
-	double windDirection = 0;
+	uint32_t timestamp;
+	int64_t temperature = 0;
+	uint64_t humidity = 0;
+	uint64_t pressure = 0;
+	uint64_t battery = 0;
+	uint64_t windSpeed = 0;
+	uint64_t windDirection = 0;
+	uint64_t rain = 0;
 
 	uint32_t numSamples = 0;
 	uint32_t numBatterySamples = 0;
@@ -32,6 +34,7 @@ void zeroWeatherReading(WeatherReading *reading) {
 	reading->battery = 0;
 	reading->windSpeed = 0;
 	reading->windDirection = 0;
+	reading->rain = 0;
 }
 
 void zeroWeatherReading(WeatherReadingAccumulator *reading) {
@@ -44,6 +47,7 @@ void zeroWeatherReading(WeatherReadingAccumulator *reading) {
 	reading->windDirection = 0;
 	reading->numBatterySamples = 0;
 	reading->numSamples = 0;
+	reading->rain = 0;
 }
 
 void copyWeatherReading(WeatherReading src, WeatherReading dest) {
@@ -54,28 +58,23 @@ void copyWeatherReading(WeatherReading src, WeatherReading dest) {
 	dest.battery = src.battery;
 	dest.windSpeed = src.windSpeed;
 	dest.windDirection = src.windDirection;
+	dest.rain = src.rain;
 }
 
 void store_accumulator(WeatherReading *dest, WeatherReadingAccumulator src) {
-	dest->timestamp = src.timestamp/src.numSamples;
-	dest->temperature = src.temperature/src.numSamples;
-	dest->humidity = src.humidity/src.numSamples;
-	dest->pressure = src.pressure/src.numSamples;
-	dest->battery = src.battery/src.numBatterySamples;
-	dest->windSpeed = src.windSpeed/src.numSamples;
-	dest->windDirection = src.windDirection/src.numSamples;
+	dest->timestamp = src.timestamp;
+	dest->temperature = (src.temperature/float(src.numSamples))*.01;
+	dest->humidity = (src.humidity/float(src.numSamples))*.01;
+	dest->pressure = (src.pressure/float(src.numSamples))*.01;
+	dest->battery = (src.battery/float(src.numBatterySamples))*.01;
+	dest->windSpeed = (src.windSpeed/float(src.numSamples))*.01;
+	dest->windDirection = src.windDirection/float(src.numSamples);
+	dest->rain = src.rain/float(src.numSamples);
 }
 
 WeatherReading get_averaged_accumulator(WeatherReadingAccumulator src) {
 	WeatherReading dest;
-
-	dest.timestamp = src.timestamp/src.numSamples;
-	dest.temperature = src.temperature/src.numSamples;
-	dest.humidity = src.humidity/src.numSamples;
-	dest.pressure = src.pressure/src.numSamples;
-	dest.battery = src.battery/src.numBatterySamples;
-	dest.windSpeed = src.windSpeed/src.numSamples;
-	dest.windDirection = src.windDirection/src.numSamples;
+	store_accumulator(&dest, src);
 
 	return dest;
 }
@@ -106,6 +105,8 @@ void printWeatherReading(WeatherReading reading) {
 	Serial.print("Wind Direction: ");
 	Serial.print(reading.windDirection);
 	Serial.println("deg");
+	Serial.print("Rain: ");
+	Serial.println(reading.rain);
 }
 
 void printWeatherReading(WeatherReadingAccumulator sampleAccumulator) {
@@ -148,6 +149,8 @@ String generate_request_url(WeatherReading weatherReading) {
   outputUrl += weatherReading.windSpeed;
   outputUrl += "&windDirection=";
   outputUrl += weatherReading.windDirection;
+	outputUrl += "&rain=";
+	outputUrl += weatherReading.rain;
 
   outputUrl += "&timestamp=";
   outputUrl += weatherReading.timestamp;

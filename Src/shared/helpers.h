@@ -20,17 +20,17 @@
 #define DEBUG_PRINTLN(...)
 #endif
 
-void send_serial(SoftwareSerial *serial, char messageType, const char *value) {
-  Serial.print("SoftwareSerial (sent)");
-  Serial.print((int)messageType);
-  Serial.print((int)strlen(value));
-  Serial.print(value);
-  Serial.println();
-
-  serial->write(messageType);
-  serial->write((char)strlen(value));
-  serial->write(value);
-}
+// void send_serial(SoftwareSerial *serial, char messageType, const char *value) {
+//   Serial.print("SoftwareSerial (sent)");
+//   Serial.print((int)messageType);
+//   Serial.print((int)strlen(value));
+//   Serial.print(value);
+//   Serial.println();
+//
+//   serial->write(messageType);
+//   serial->write((char)strlen(value));
+//   serial->write(value);
+// }
 
 // // Return RSSI or 0 if target SSID not found
 // int32_t getRSSI(const char* target_ssid) {
