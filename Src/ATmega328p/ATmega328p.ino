@@ -254,6 +254,9 @@ uint32_t read_timestamp() {
 }
 
 void submit_stored_readings() {
+  // have this wait for a esp reply withe id of of the reading in a queue or something
+  // maybe have that set the read pointer up?
+
   // Have this take the latest reading as an argument and submit that first then any that are stored afterwards
   int failedSubmits = 0;
   uint32_t submitStartTimestamp = read_timestamp();
@@ -548,6 +551,10 @@ void take_sample() {
   Serial.print(sampleAccumulator.numSamples);
   Serial.print("/");
   Serial.println(SAMPLES_PER_READING);
+  Serial.print("For reading index ");
+  Serial.print(weatherReadingWriteIndex);
+  Serial.print("/");
+  Serial.println(weatherReadingReadIndex);
   Serial.print("Uptime: ");
   Serial.print((read_timestamp()-bootTime)/60.0);
   Serial.print(" (mins) since ");
