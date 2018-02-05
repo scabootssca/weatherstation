@@ -1,4 +1,1 @@
-server/weather.db
-server/__pycache__/
-server/out.htm
-ESP8266_Weather_Reporting_Module/config.h
+Src/shared/config.h
