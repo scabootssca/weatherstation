@@ -1,8 +1,0 @@
-EESchema-DOCLIB  Version 2.0
-#
-$CMP Battery_Cell
-D 3.6v Lithium
-K lithium battery
-$ENDCMP
-#
-#End Doc Library
