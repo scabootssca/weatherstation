@@ -193,7 +193,7 @@ void setup() {
   // SRAM init
   sram_init(SRAM_CS_PIN); // Will set pin mode and such
 
-  Serial.println(F("Attempting to restore from SRAM after 200ms"));
+  DEBUG_PRINTLN(F("Attempting to restore from SRAM after 200ms"));
   delay(200);
 
   // Try and restore from prevuint32_t weatherReadingWriteIndex = 0;
@@ -201,22 +201,22 @@ void setup() {
     sram_read(&weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
     sram_read(&weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
 
-    Serial.println(F("Sucessfully restored state from SRAM."));
+    DEBUG_PRINTLN(F("Sucessfully restored state from SRAM."));
   } else {
     if (CLEAN_START) {
-      Serial.println(F("Not restoring from SRAM, CLEAN_START"));
+      DEBUG_PRINTLN(F("Not restoring from SRAM, CLEAN_START"));
     } else {
-      Serial.println(F("Previous state not found in SRAM, starting fresh."));
+      DEBUG_PRINTLN(F("Previous state not found in SRAM, starting fresh."));
     }
 
     sram_write(weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
     sram_write(weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
   }
 
-  Serial.print(F("Reading Read Index: "));
-  Serial.println(weatherReadingReadIndex);
-  Serial.print(F("Reading Write Index: "));
-  Serial.println(weatherReadingWriteIndex);
+  DEBUG_PRINT(F("Reading Read Index: "));
+  DEBUG_PRINTLN(weatherReadingReadIndex);
+  DEBUG_PRINT(F("Reading Write Index: "));
+  DEBUG_PRINTLN(weatherReadingWriteIndex);
 
   // Store boot time
   bootTime = RTC.now().unixtime();
@@ -235,11 +235,11 @@ void setup() {
       bmeSensor.STANDBY_MS_0_5
     );
   } else {
-    Serial.println(F("BME280 sensor is not detected at i2caddr 0x76; check wiring."));
+    DEBUG_PRINTLN(F("BME280 sensor is not detected at i2caddr 0x76; check wiring."));
   }
 
-  Serial.println(F("Finished Initilizing"));
-  Serial.println();
+  DEBUG_PRINTLN(F("Finished Initilizing"));
+  DEBUG_PRINTLN();
 
   digitalWrite(OK_LED_PIN, LOW);
   digitalWrite(ERROR_LED_PIN, LOW);
@@ -265,9 +265,28 @@ void setup() {
 //   mcp.digitalWrite(MCP_ESP_CS_PIN, HIGH);
 //   SPI.endTransaction();
 //
-//   Serial.print(F("Sent SPI got: "));
-//   Serial.println(String(data).c_str());
+//   DEBUG_PRINT(F("Sent SPI got: "));
+//   DEBUG_PRINTLN(String(data).c_str());
 // }
+
+void esp_sleep() {
+  DEBUG_PRINTLN(F("Putting ESP to sleep now"));
+  send_esp_serial(ESP_MSG_SLEEP, "true");
+  espState = ESP_STATE_SLEEP;
+}
+
+void esp_reset() {
+  DEBUG_PRINTLN(F("Resetting ESP.."));
+  pinMode(ESP_RESET_PIN, OUTPUT);
+  digitalWrite(ESP_RESET_PIN, LOW);
+  delay(5);
+  digitalWrite(ESP_RESET_PIN, HIGH);
+  delay(5);
+  digitalWrite(ESP_RESET_PIN, LOW);
+  pinMode(ESP_RESET_PIN, INPUT);
+  delay(10);
+  espState = ESP_STATE_IDLE;
+}
 
 void loop() {
   recv_esp_serial();
@@ -275,9 +294,9 @@ void loop() {
   if (espState == ESP_STATE_AWAITING_RESULT) {
     // If the esp timed out
     if (get_timestamp()-startEspWaitTime > 10) {
-      Serial.println(F("Esp didn't respond in time, resetting"));
+      DEBUG_PRINTLN(F("Esp didn't respond in time, resetting"));
       // This'll start it again
-      espState = ESP_STATE_SLEEP;
+      esp_reset();
     // Else if it replied
     } else if (mcp.digitalRead(MCP_ESP_RESULT_PIN)) {
       espState = ESP_STATE_IDLE;
@@ -290,53 +309,43 @@ void loop() {
         failedSubmits++;
 
         if (failedSubmits >= MAX_FAILED_SUBMITS) {
-          Serial.println(F("Failed - Aborting until next reading (!)"));
+          DEBUG_PRINTLN(F("Failed - Aborting until next reading (!)"));
           submitTimeoutCountdown = 1;
         } else {
-          Serial.print(F("Failed - Retries Left: "));
-          Serial.println(MAX_FAILED_SUBMITS-failedSubmits);
+          DEBUG_PRINT(F("Failed - Retries Left: "));
+          DEBUG_PRINTLN(MAX_FAILED_SUBMITS-failedSubmits);
         }
       }
 
       // If we've submitted all or too many fails then put it back to sleep
-      if (submitTimeoutCountdown || weatherReadingReadIndex == weatherReadingWriteIndex) {
-        Serial.println(F("Putting ESP to sleep now"));
-        send_esp_serial(ESP_MSG_SLEEP, "true");
-        espState = ESP_STATE_SLEEP;
+      if (submitTimeoutCountdown > 0 || (weatherReadingReadIndex == weatherReadingWriteIndex)) {
+        esp_sleep();
       }
 
-      Serial.print(F("Esp sent result: "));
-      Serial.println(success);
+      DEBUG_PRINT(F("Esp sent result: "));
+      DEBUG_PRINTLN(success);
     }
   }
 
   // ESP_STATE_IDLE, no timeout condition and results waiting for submission
   if ((espState == ESP_STATE_IDLE) && (submitTimeoutCountdown <= 0) && (weatherReadingReadIndex != weatherReadingWriteIndex)) {
-    // // Wake the esp if it's sleeping
-    // if (espState == ESP_STATE_SLEEP) {
-    //   reset_esp();
-    //   delay(5);
-    //   recv_esp_serial();
-    //   espState = ESP_STATE_IDLE;
-    // }
-
     submit_reading();
   }
 
+  // Time to sample
   if (millis()-lastSampleMillis > SAMPLE_INTERVAL) {
-    digitalWrite(OK_LED_PIN, HIGH);
     take_sample();
-    digitalWrite(OK_LED_PIN, LOW);
 
+    // If we're at the sample before last
     if (sampleAccumulator.numSamples == SAMPLES_PER_READING-1) {
       // Wake the esp if it's sleeping
       if (espState == ESP_STATE_SLEEP) {
-        reset_esp();
-        espState = ESP_STATE_IDLE;
+        esp_reset();
       }
     }
   }
 
+  // If we've enough samples to make a reading
   if (sampleAccumulator.numSamples >= SAMPLES_PER_READING) {
     // Average the accumuator as a reading and store it
     WeatherReading currentReading = get_averaged_accumulator(sampleAccumulator);
@@ -465,10 +474,10 @@ void submit_reading() {
 //   uint32_t submitStartTimestamp = get_timestamp();
 //   WeatherReading currentReading;
 //
-//   Serial.println(F("[Starting Submit Stored Readings]"));
+//   DEBUG_PRINTLN(F("[Starting Submit Stored Readings]"));
 //
 //   if (weatherReadingReadIndex == weatherReadingWriteIndex) {
-//     Serial.println(F("[Nothing to submit]"));
+//     DEBUG_PRINTLN(F("[Nothing to submit]"));
 //     return;
 //   }
 //
@@ -483,11 +492,11 @@ void submit_reading() {
 //
 //     // Check for read corruption
 //     if (currentReading.timestamp > submitStartTimestamp) {
-//       Serial.println(F("Corrupted reading: Future timestamp, Skipping."));
+//       DEBUG_PRINTLN(F("Corrupted reading: Future timestamp, Skipping."));
 //       advanceReadPointer = true;
 //     } else {
-//       Serial.print(F("Weather Reading Index: "));
-//       Serial.println(weatherReadingReadIndex);
+//       DEBUG_PRINT(F("Weather Reading Index: "));
+//       DEBUG_PRINTLN(weatherReadingReadIndex);
 //       printWeatherReading(currentReading);
 //
 //       String outputUrl = generate_request_url(currentReading);
@@ -517,12 +526,12 @@ void submit_reading() {
 //       failedSubmits++;
 //
 //       if (failedSubmits >= MAX_FAILED_SUBMITS) {
-//         Serial.println(F("Failed - Aborting (!)"));
+//         DEBUG_PRINTLN(F("Failed - Aborting (!)"));
 //         break;
 //       }
 //
-//       Serial.print(F("Failed - Retries Left: "));
-//       Serial.println(MAX_FAILED_SUBMITS-failedSubmits);
+//       DEBUG_PRINT(F("Failed - Retries Left: "));
+//       DEBUG_PRINTLN(MAX_FAILED_SUBMITS-failedSubmits);
 //     }
 //   }
 //
@@ -540,7 +549,7 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
 
 	// Get the vcc mV
 	//////////////////////////////
-	float referencePinMv = 2495; //2500.0;
+	float referencePinMv = 2500; //2500.0;
 
 	mcp.digitalWrite(MCP_REFV_ENABLE_PIN, LOW);
 	delay(10); // For refV to stabilize
@@ -591,23 +600,12 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
   return readingMv + offset;
 }
 
-void reset_esp() {
-  pinMode(ESP_RESET_PIN, OUTPUT);
-  digitalWrite(ESP_RESET_PIN, LOW);
-  delay(5);
-  digitalWrite(ESP_RESET_PIN, HIGH);
-  delay(5);
-  digitalWrite(ESP_RESET_PIN, LOW);
-  pinMode(ESP_RESET_PIN, INPUT);
-  delay(10);
-}
-
 void send_esp_serial(char messageType, const char *value) {
-  Serial.print(F("ESP (sent)"));
-  Serial.print((int)messageType);
-  Serial.print((int)strlen(value));
-  Serial.print(value);
-  Serial.println();
+  DEBUG_PRINT(F("ESP (sent)"));
+  DEBUG_PRINT((int)messageType);
+  DEBUG_PRINT((int)strlen(value));
+  DEBUG_PRINT(value);
+  DEBUG_PRINTLN();
 
   ESPSerial.write(messageType);
   ESPSerial.write((char)strlen(value));
@@ -616,7 +614,7 @@ void send_esp_serial(char messageType, const char *value) {
 
 bool recv_esp_serial() {
 	// Print ESP serial messages
-	while (ESPSerial.available() > 0) {
+	if (ESPSerial.available() > 0) {
 		uint8_t rxByte = ESPSerial.read();
 
 		if (ESPNewline) {
@@ -654,8 +652,8 @@ float read_anemometer() {
   anemometerPulses = 0;
   sei();
 
-  Serial.print("Num anemometer pulses: ");
-  Serial.println(numTimelyPulses);
+  // DEBUG_PRINT("Num anemometer pulses: ");
+  // DEBUG_PRINTLN(numTimelyPulses);
 
   float anemometerMph = (numTimelyPulses * 0.5) * (60000.0 / (currentReadingMillis-lastAnemometerReadingMillis)) * ANEMOMETER_CALIBRATION_COEF;
 
@@ -672,8 +670,8 @@ int read_rain() {
   rainBucketPulses = 0;
   sei();
 
-  Serial.print("Num rain pulses: ");
-  Serial.println(numTimelyPulses);
+  // DEBUG_PRINT("Num rain pulses: ");
+  // DEBUG_PRINTLN(numTimelyPulses);
 
   return numTimelyPulses;
 }
@@ -745,28 +743,31 @@ void read_tph(float *dest) {
 
 void take_sample() {
   #if DEBUG
-  Serial.println();
-  Serial.print(F("--(Taking sample: "));
-  Serial.print(sampleAccumulator.numSamples+1);
-  Serial.print(F("/"));
-  Serial.print(SAMPLES_PER_READING);
-  Serial.println(F(")--"));
-  Serial.print(F("For reading index "));
-  Serial.print(weatherReadingWriteIndex);
-  Serial.print(F("/"));
-  Serial.println(weatherReadingReadIndex);
-  Serial.print(F("Uptime: "));
-  Serial.print((get_timestamp()-bootTime)/60.0);
-  Serial.print(F(" (mins) since "));
+  digitalWrite(OK_LED_PIN, HIGH);
+  DEBUG_PRINTLN();
+  DEBUG_PRINT(F("--(Taking sample: "));
+  DEBUG_PRINT(sampleAccumulator.numSamples+1);
+  DEBUG_PRINT(F("/"));
+  DEBUG_PRINT(SAMPLES_PER_READING);
+  DEBUG_PRINTLN(F(")--"));
+  DEBUG_PRINT(F("For Write Index: "));
+  DEBUG_PRINT(weatherReadingWriteIndex);
+  DEBUG_PRINT(F(" | Read Index: "));
+  DEBUG_PRINTLN(weatherReadingReadIndex);
+  DEBUG_PRINT(F("Uptime: "));
+  DEBUG_PRINT((get_timestamp()-bootTime)/60.0);
+  DEBUG_PRINT(F(" (mins) since "));
   print_pretty_timestamp(bootTime);
-  Serial.println();
+  DEBUG_PRINTLN();
   #endif
 
   lastSampleMillis = millis();
 
   sampleAccumulator.timestamp = get_timestamp();
+
   sampleAccumulator.windSpeed += int32_t(read_anemometer()*100);
-  sampleAccumulator.windDirection += read_wind_vane();
+  read_wind_vane(&sampleAccumulator.windDirectionX, &sampleAccumulator.windDirectionY);
+
   sampleAccumulator.rain += read_rain();
 
   if (sampleAccumulator.numSamples%BATTERY_SAMPLE_MODULO == 0){
@@ -781,13 +782,13 @@ void take_sample() {
   sampleAccumulator.pressure += int32_t(bmeReadings[1]*100);
   sampleAccumulator.humidity += int32_t(bmeReadings[2]*100);
 
-
   sampleAccumulator.numSamples++;
 
   sram_write_accumulator(&sampleAccumulator);
 
   #if DEBUG
   printWeatherReading(sampleAccumulator);
-  Serial.println();
+  DEBUG_PRINTLN();
+  digitalWrite(OK_LED_PIN, LOW);
   #endif
 }
