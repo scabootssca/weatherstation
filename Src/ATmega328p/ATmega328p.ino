@@ -65,6 +65,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #include <Wire.h>
 #include <SPI.h>
 #include <SoftwareSerial.h>
+#include <math.h>
 
 #include "config.h"
 #include "helpers.h"
@@ -686,11 +687,35 @@ int read_rain() {
   return numTimelyPulses;
 }
 
-int read_wind_vane() {
+void read_wind_vane(double *destX, double *destY) {
   int windVanePinReading = analogRead(WIND_VANE_ADC_PIN);
   int windDegrees = map(windVanePinReading, WIND_VANE_MIN, WIND_VANE_MAX, 0, 360);
+  float windRadians = windDegrees * M_PI / 180;
 
-  return windDegrees;
+  *destY += sin(windRadians);
+  *destX += cos(windRadians);
+
+  float yPos = sin(windRadians);
+  float xPos = cos(windRadians);
+
+  DEBUG_PRINT(F("Wind Degrees: "));
+  DEBUG_PRINTLN(windDegrees);
+  DEBUG_PRINT(F("Wind Radians: "));
+  DEBUG_PRINTLN(windRadians);
+
+  // DEBUG_PRINT(F("Wind Cartesian Pos (X, Y) ("));
+  // DEBUG_PRINT(xPos);
+  // DEBUG_PRINT(F(", "));
+  // DEBUG_PRINT(yPos);
+  // DEBUG_PRINTLN(F(")"));
+  //
+  // Serial.print(F("Total (X, Y) ("));
+  // Serial.print(double(*destX));
+  // Serial.print(", ");
+  // Serial.print(double(*destY));
+  // Serial.println(")");
+
+
 }
 
 float read_battery_voltage(float oversampleBits=3.0) {

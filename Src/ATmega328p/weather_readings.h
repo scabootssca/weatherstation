@@ -1,5 +1,6 @@
 #ifndef _WEATHER_READINGS_H_
 #define _WEATHER_READINGS_H_
+#include <math.h>
 
 struct WeatherReading {
 	uint32_t timestamp;
@@ -14,12 +15,16 @@ struct WeatherReading {
 
 struct WeatherReadingAccumulator {
 	uint32_t timestamp;
+
+	// Bme sample things
 	int64_t temperature = 0;
 	uint64_t humidity = 0;
 	uint64_t pressure = 0;
+
 	uint64_t battery = 0;
 	uint64_t windSpeed = 0;
-	uint64_t windDirection = 0;
+	double windDirectionX = 0;
+	double windDirectionY = 0;
 	uint64_t rain = 0;
 
 	uint32_t numSamples = 0;
@@ -44,7 +49,8 @@ void zeroWeatherReading(WeatherReadingAccumulator *reading) {
 	reading->pressure = 0;
 	reading->battery = 0;
 	reading->windSpeed = 0;
-	reading->windDirection = 0;
+	reading->windDirectionX = 0;
+	reading->windDirectionY = 0;
 	reading->numBatterySamples = 0;
 	reading->numSamples = 0;
 	reading->rain = 0;
@@ -68,7 +74,47 @@ void store_accumulator(WeatherReading *dest, WeatherReadingAccumulator src) {
 	dest->pressure = (src.pressure/float(src.numSamples))*.01;
 	dest->battery = (src.battery/float(src.numBatterySamples))*.01;
 	dest->windSpeed = (src.windSpeed/float(src.numSamples))*.01;
-	dest->windDirection = src.windDirection/float(src.numSamples);
+
+	// Do the average of the X,Y cartesian wind coordinates
+	// Convert that to polar and you have your degrees and the variance
+	// Need that because avg of the degrees for getting a circular mean
+	// eg. (359+0)/2 == ~180 is totally wrong says south not north
+	double avgWindX = src.windDirectionX/double(src.numSamples);
+	double avgWindY = src.windDirectionY/double(src.numSamples);
+
+	// Serial.print(F("Avg (X, Y) ("));
+	// Serial.print(avgWindX);
+	// Serial.print(", ");
+	// Serial.print(avgWindY);
+	// Serial.println(")");
+
+	// Atan+modifier is in radians, then convert to degrees
+	float angleRadians = atan(avgWindY/avgWindX);
+	float angleDegrees = angleRadians * 180 / M_PI;
+
+	if (avgWindX < 0) {
+		// Quadrant 2
+		if (avgWindY >= 0) {
+			angleDegrees = 180-angleDegrees;
+		// Quadrant 3
+		} else {
+			angleDegrees = 180+angleDegrees;
+		}
+	// Quadrant 4
+	} else if (avgWindY < 0) {
+		angleDegrees = 360+angleDegrees;
+	}
+
+	dest->windDirection = angleDegrees;
+	// float variance = 1-(sqrt((avgWindX*avgWindX) + (avgWindY*avgWindY))); // Magnitude of polar vector
+  //
+	// Serial.print(F("Variance: "));
+	// Serial.println(variance);
+	// Serial.print(F("AvgRadians: "));
+	// Serial.println(angleRadians);
+	// Serial.print(F("Avg Wind Degrees: "));
+	// Serial.println(dest->windDirection);
+
 	dest->rain = src.rain/float(src.numSamples);
 }
 
