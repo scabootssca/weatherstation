@@ -13,7 +13,8 @@
 
 SoftwareSerial ATmegaSerial(ATMEGA_RX_PIN, ATMEGA_TX_PIN);
 
-char ATmegaSerialBuffer[300];
+#define ATMEGA_BUFFER_SIZE 300
+char ATmegaSerialBuffer[ATMEGA_BUFFER_SIZE];
 int ATmegaSerialIndex = 0;
 
 #define STATE_WAIT 0
@@ -118,6 +119,11 @@ void loop() {
       if (ATmegaSerialIndex == ATmegaSerialLength) {
         ATmegaSerialState = STATE_FINISHED;
         ATmegaSerialBuffer[ATmegaSerialIndex++] = '\0';
+      }
+
+      if (ATmegaSerialIndex >= ATMEGA_BUFFER_SIZE-1) {
+        Serial.println("Serial buffer overflow!");
+        ATmegaSerialIndex = 0;
       }
     }
   }
