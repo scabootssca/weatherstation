@@ -90,7 +90,7 @@ bool sram_begin_transaction(bool mode, uint32_t address, int size) {
   #endif
 
 
-  uint32_t spiHz = 10000000;
+  uint32_t spiHz = 10000000; // 10MHz
   SPI.beginTransaction(SPISettings(spiHz, MSBFIRST, SPI_MODE0));
   digitalWrite(SRAM_CS_PIN, LOW);
   delay(1);
@@ -227,12 +227,13 @@ void sram_read_accumulator(WeatherReadingAccumulator *sampleAccumulator) {
   sram_begin_transaction(SRAM_MODE_READ, SRAM_ADDR_ACCUMULATOR, SRAM_SIZE_ACCUMULATOR);
 
   sampleAccumulator->timestamp = sram_transfer(uint32_t(0));
-  sampleAccumulator->temperature = static_cast<int64_t>(sram_transfer(uint64_t(0)));//static_cast<double>(sram_transfer(uint64_t(0)));
+  sampleAccumulator->temperature = static_cast<int64_t>(sram_transfer(uint64_t(0)));
   sampleAccumulator->humidity = sram_transfer(uint64_t(0));//static_cast<double>(sram_transfer(uint64_t(0)));
   sampleAccumulator->pressure = sram_transfer(uint64_t(0));//static_cast<double>(sram_transfer(uint64_t(0)));
   sampleAccumulator->battery = sram_transfer(uint64_t(0));//static_cast<double>(sram_transfer(uint64_t(0)));
   sampleAccumulator->windSpeed = sram_transfer(uint64_t(0));//static_cast<double>(sram_transfer(uint64_t(0)));
-  sampleAccumulator->windDirection = sram_transfer(uint64_t(0));//static_cast<double>(sram_transfer(uint64_t(0)));
+  sampleAccumulator->windDirectionX = static_cast<double>(sram_transfer(uint64_t(0)));
+  sampleAccumulator->windDirectionY = static_cast<double>(sram_transfer(uint64_t(0)));
   sampleAccumulator->rain = sram_transfer(uint64_t(0));//static_cast<double>(sram_transfer(uint64_t(0)));
 
   sampleAccumulator->numSamples = sram_transfer(uint32_t(0));
@@ -250,7 +251,8 @@ void sram_write_accumulator(WeatherReadingAccumulator *sampleAccumulator) {
   sram_transfer(sampleAccumulator->pressure);
   sram_transfer(sampleAccumulator->battery);
   sram_transfer(sampleAccumulator->windSpeed);
-  sram_transfer(sampleAccumulator->windDirection);
+  sram_transfer(static_cast<uint64_t>(sampleAccumulator->windDirectionX));
+  sram_transfer(static_cast<uint64_t>(sampleAccumulator->windDirectionY));
   sram_transfer(sampleAccumulator->rain);
 
   sram_transfer(sampleAccumulator->numSamples);
