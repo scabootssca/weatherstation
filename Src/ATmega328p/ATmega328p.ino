@@ -387,16 +387,61 @@ void advance_read_pointer() {
   sram_write(weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
 }
 
+String generate_request_url(WeatherReading weatherReading) {
+	// Make the url
+	String outputUrl = "/report.php?";
+
+	if (bmeConnected) {
+	  if (!isnan(weatherReading.temperature)) {
+	    outputUrl += "temp=";
+	    outputUrl += weatherReading.temperature;
+	  }
+
+	  if (!isnan(weatherReading.humidity)) {
+	      outputUrl += "&humidity=";
+	      outputUrl += weatherReading.humidity;
+
+	      // If we have temperature and humidity then calculate and submit the heat index also
+	      if (!isnan(weatherReading.temperature)) {
+	        outputUrl += "&heatIndex=";
+	        outputUrl += computeHeatIndex(weatherReading.temperature, weatherReading.humidity, false);
+	      }
+	  }
+
+	  if (!isnan(weatherReading.pressure)) {
+	    outputUrl += "&pressure=";
+	    outputUrl += weatherReading.pressure;
+	  }
+	}
+
+  outputUrl += "&bat=";
+  outputUrl += weatherReading.battery;
+  outputUrl += "&windSpeed=";
+  outputUrl += weatherReading.windSpeed;
+  outputUrl += "&windDirection=";
+  outputUrl += weatherReading.windDirection;
+	outputUrl += "&rain=";
+	outputUrl += weatherReading.rain;
+
+  outputUrl += "&timestamp=";
+  outputUrl += weatherReading.timestamp;
+
+  // Secret key for security (>_O)
+  //outputUrl += "&key=f6f9b0b8348a85843e951723a3060719f55985fd"; // frie!ggandham!!%2{[ sha1sum
+
+	return outputUrl;
+}
+
 void submit_reading() {
-  Serial.println();
-  Serial.print(F("Submiting Reading: "));
-  Serial.println(weatherReadingReadIndex);
+  DEBUG_PRINTLN();
+  DEBUG_PRINT(F("Submiting Reading: "));
+  DEBUG_PRINTLN(weatherReadingReadIndex);
 
   WeatherReading currentReading;
   sram_read_reading(&currentReading, weatherReadingReadIndex);
 
   if (currentReading.timestamp > get_timestamp()) {
-    Serial.println(F("Corrupted reading: Future timestamp, Skipping."));
+    DEBUG_PRINTLN(F("Corrupted reading: Future timestamp, Skipping."));
     advance_read_pointer();
     return;
   }

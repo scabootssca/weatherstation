@@ -118,47 +118,4 @@ void printWeatherReading(WeatherReadingAccumulator sampleAccumulator) {
 	Serial.println(sampleAccumulator.numBatterySamples);
 }
 
-String generate_request_url(WeatherReading weatherReading) {
-	// Make the url
-	String outputUrl = "/report.php?";
-
-  if (!isnan(weatherReading.temperature)) {
-    outputUrl += "temp=";
-    outputUrl += weatherReading.temperature;
-  }
-
-  if (!isnan(weatherReading.humidity)) {
-      outputUrl += "&humidity=";
-      outputUrl += weatherReading.humidity;
-
-      // If we have temperature and humidity then calculate and submit the heat index also
-      if (!isnan(weatherReading.temperature)) {
-        outputUrl += "&heatIndex=";
-        outputUrl += computeHeatIndex(weatherReading.temperature, weatherReading.humidity, false);
-      }
-  }
-
-  if (!isnan(weatherReading.pressure)) {
-    outputUrl += "&pressure=";
-    outputUrl += weatherReading.pressure;
-  }
-
-  outputUrl += "&bat=";
-  outputUrl += weatherReading.battery;
-  outputUrl += "&windSpeed=";
-  outputUrl += weatherReading.windSpeed;
-  outputUrl += "&windDirection=";
-  outputUrl += weatherReading.windDirection;
-	outputUrl += "&rain=";
-	outputUrl += weatherReading.rain;
-
-  outputUrl += "&timestamp=";
-  outputUrl += weatherReading.timestamp;
-
-  // Secret key for security (>_O)
-  //outputUrl += "&key=f6f9b0b8348a85843e951723a3060719f55985fd"; // frie!ggandham!!%2{[ sha1sum
-
-	return outputUrl;
-}
-
 #endif
