@@ -13,6 +13,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
 WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
+#include <avr/wdt.h>
+#define WD_TIMEOUT WDTO_2S
+
 #define CLEAN_START 0 // This will mark SRAM as unpopulated and update rtc to compile time
 
 // Sample and Reading defines
@@ -58,6 +61,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define MCP_BAT_DIV_ENABLE_PIN 7
 
 // Includes
+#include <avr/wdt.h>
 #include <Wire.h>
 #include <SPI.h>
 #include <SoftwareSerial.h>
@@ -121,6 +125,8 @@ void rainBucketISR() {
 }
 
 void setup() {
+  wdt_enable(WD_TIMEOUT);
+
   // Serial
   Serial.begin(19200);
 
@@ -195,6 +201,9 @@ void setup() {
 
   DEBUG_PRINTLN(F("Attempting to restore from SRAM after 200ms"));
   delay(200);
+
+  // FEED IT
+  wdt_reset();
 
   // Try and restore from prevuint32_t weatherReadingWriteIndex = 0;
   if (!CLEAN_START && sram_restore(&sampleAccumulator)) {
@@ -289,6 +298,7 @@ void esp_reset() {
 }
 
 void loop() {
+  wdt_reset();
   recv_esp_serial();
 
   if (espState == ESP_STATE_AWAITING_RESULT) {
