@@ -206,16 +206,28 @@ bool send_request(char *url) {
 
   Serial.println("\n[Response:]");
 
+  bool success = false;
+
   while (client.available()) {
     // It seems that readStringUntil blocks if it doesn't find the char again
     String line = client.readStringUntil('\n');
+
+    if (line.startsWith("Success")) {
+      success = true;
+    }
+
     Serial.println(line);
   }
 
   client.stop();
-  Serial.println("\n[Closed Client Connection]");
+  
+  Serial.print("\n[Success: ");
+  Serial.print(success?"True":"False");
+  Serial.println("]");
 
-  return true;
+  Serial.println("[Closed Client Connection]");
+
+  return success;
 }
 
 bool connect_to_wifi() {
