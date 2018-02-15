@@ -134,13 +134,42 @@ void rainBucketISR() {
 }
 
 void setup() {
+  // Read and reset the mcu status register
+  uint8_t mcusrBootValue = MCUSR;
+  MCUSR &= ~(0b00001111);
+
+  // Enable watchdog
   wdt_enable(WD_TIMEOUT);
+
+  // Reset esp so we can send it boot msg
+  esp_reset();
 
   // Serial
   Serial.begin(19200);
 
-  Serial.println(F("\n"));
-  Serial.println(F("Initilizing ATmega328p"));
+  DEBUG_PRINT(F("\n\nInitilizing"));
+
+  for (int i=0; i<10; i++) {
+    DEBUG_PRINT(".");
+    delay(5);
+  }
+
+  DEBUG_PRINTLN(".");
+
+
+  // We need to have something to send debug info with the esp to the server
+  // ATmega328 Datasheet Section 15.9.1 (MCU Status Register)
+  DEBUG_PRINTLN(F("Mcu Register Status: "));
+  DEBUG_PRINT(F("WDRF: "));
+  DEBUG_PRINTLN((mcusrBootValue>>WDRF)&1);
+  DEBUG_PRINT(F("BORF: "));
+  DEBUG_PRINTLN((mcusrBootValue>>BORF)&1);
+  DEBUG_PRINT(F("EXTRF: "));
+  DEBUG_PRINTLN((mcusrBootValue>>EXTRF)&1);
+  DEBUG_PRINT(F("PORF: "));
+  DEBUG_PRINTLN((mcusrBootValue>>PORF)&1);
+  DEBUG_PRINT(F("Watchdog Status: "));
+  DEBUG_PRINTLN(WDTCSR, BIN);
 
   // Esp serial
   ESPSerial.begin(ESP_ATMEGA_BAUD_RATE);
@@ -213,24 +242,31 @@ void setup() {
 
   // SRAM init
   sram_init(SRAM_CS_PIN); // Will set pin mode and such
+  bool restoredSram = false;
 
-  DEBUG_PRINTLN(F("Attempting to restore from SRAM after 200ms"));
-  delay(200);
-
-  // FEED IT
-  wdt_reset();
+  DEBUG_PRINTLN(F("Attempting to restore from SRAM"));
+  delay(1);
 
   // Try and restore from prevuint32_t weatherReadingWriteIndex = 0;
-  if (!CLEAN_START && sram_restore(&sampleAccumulator)) {
+  if (CLEAN_START == 0 && sram_restore(&sampleAccumulator)) {
     sram_read(&weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
     sram_read(&weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
 
-    DEBUG_PRINTLN(F("Sucessfully restored state from SRAM."));
-  } else {
+    if (weatherReadingWriteIndex > SRAM_MAX_READINGS || weatherReadingReadIndex > SRAM_MAX_READINGS) {
+      DEBUG_PRINTLN(F("ERROR: Sram Corrupted"));
+      weatherReadingWriteIndex = 0;
+      weatherReadingReadIndex = 0;
+    } else {
+      DEBUG_PRINTLN(F("Ok! Sucessfully restored state from SRAM."));
+      restoredSram = true;
+    }
+  }
+
+  if (!restoredSram) {
     if (CLEAN_START) {
       DEBUG_PRINTLN(F("Not restoring from SRAM, CLEAN_START"));
     } else {
-      DEBUG_PRINTLN(F("Previous state not found in SRAM, starting fresh."));
+      DEBUG_PRINTLN(F("ERROR: Previous state not found in SRAM, starting fresh."));
     }
 
     sram_write(weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
@@ -259,11 +295,30 @@ void setup() {
     DEBUG_PRINTLN(F("BME280 sensor is not detected at i2caddr 0x76; check wiring."));
   }
 
-  DEBUG_PRINTLN(F("Finished Initilizing"));
-  DEBUG_PRINTLN();
+  DEBUG_PRINTLN(F("Sending Startup GET"));
+
+  String bootMessage = "BOOT,";
+
+  for (int i=0; i<4; i++) {
+    bootMessage += ((mcusrBootValue>>i)&1)?"1":"0";
+  }
+
+  Serial.print("Bootmsg: ");
+  Serial.println(bootMessage);
+
+  // Wait a bit
+  wdt_reset();
+  delay(500);
+
+  esp_send_debug_request(bootMessage);
+
+  esp_sleep();
 
   digitalWrite(OK_LED_PIN, LOW);
   digitalWrite(ERROR_LED_PIN, LOW);
+
+  DEBUG_PRINTLN(F("Finished Initilizing"));
+  DEBUG_PRINTLN();
 }
 //
 // void esp_do_spi() {
@@ -289,6 +344,14 @@ void setup() {
 //   DEBUG_PRINT(F("Sent SPI got: "));
 //   DEBUG_PRINTLN(String(data).c_str());
 // }
+
+void esp_send_debug_request(String message) {
+  espState = ESP_STATE_AWAITING_RESULT;
+  startEspWaitTime = get_timestamp();
+
+  send_esp_serial(ESP_MSG_REQUEST, ("/debug.php?"+message).c_str());
+  delay(1);
+}
 
 void esp_sleep() {
   DEBUG_PRINTLN(F("Putting ESP to sleep now"));
@@ -490,80 +553,6 @@ void submit_reading() {
   send_esp_serial(ESP_MSG_REQUEST, outputUrl.c_str());
   delay(1);
 }
-//
-// void submit_stored_readings() {
-//   // have this wait for a esp reply withe id of of the reading in a queue or something
-//   // maybe have that set the read pointer up?
-//
-//   // Have this take the latest reading as an argument and submit that first then any that are stored afterwards
-//   int failedSubmits = 0;
-//   uint32_t submitStartTimestamp = get_timestamp();
-//   WeatherReading currentReading;
-//
-//   DEBUG_PRINTLN(F("[Starting Submit Stored Readings]"));
-//
-//   if (weatherReadingReadIndex == weatherReadingWriteIndex) {
-//     DEBUG_PRINTLN(F("[Nothing to submit]"));
-//     return;
-//   }
-//
-//   while (failedSubmits < MAX_FAILED_SUBMITS) {
-//     while (ESPSerial.available()) {
-//       recv_esp_serial();
-//     }
-//
-//     bool advanceReadPointer = false;
-//
-//     sram_read_reading(&currentReading, weatherReadingReadIndex);
-//
-//     // Check for read corruption
-//     if (currentReading.timestamp > submitStartTimestamp) {
-//       DEBUG_PRINTLN(F("Corrupted reading: Future timestamp, Skipping."));
-//       advanceReadPointer = true;
-//     } else {
-//       DEBUG_PRINT(F("Weather Reading Index: "));
-//       DEBUG_PRINTLN(weatherReadingReadIndex);
-//       printWeatherReading(currentReading);
-//
-//       String outputUrl = generate_request_url(currentReading);
-//       send_esp_serial(ESP_MSG_REQUEST, outputUrl.c_str());
-//       delay(1);
-//
-//       advanceReadPointer = true;
-//     }
-//
-//     // If we need to goto the next reading
-//     if (advanceReadPointer) {
-//       weatherReadingReadIndex++;
-//
-//       if (weatherReadingReadIndex >= SRAM_MAX_READINGS) {
-//         weatherReadingReadIndex = 0;
-//       }
-//
-//       // Store it
-//       sram_write(weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
-//
-//       // If we've submitted all then break
-//       if (weatherReadingReadIndex == weatherReadingWriteIndex) {
-//         break;
-//       }
-//
-//     } else {
-//       failedSubmits++;
-//
-//       if (failedSubmits >= MAX_FAILED_SUBMITS) {
-//         DEBUG_PRINTLN(F("Failed - Aborting (!)"));
-//         break;
-//       }
-//
-//       DEBUG_PRINT(F("Failed - Retries Left: "));
-//       DEBUG_PRINTLN(MAX_FAILED_SUBMITS-failedSubmits);
-//     }
-//   }
-//
-//   delay(5);
-//   send_esp_serial(ESP_MSG_SLEEP, "true");
-// }
 
 float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampleBits=1) {
   // Oversample for 10 -> 10+oversampleBits bit adc resolution
