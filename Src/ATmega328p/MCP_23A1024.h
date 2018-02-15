@@ -234,7 +234,8 @@ void sram_read_accumulator(WeatherReadingAccumulator *sampleAccumulator) {
   sampleAccumulator->windSpeed = sram_transfer(uint64_t(0));//static_cast<double>(sram_transfer(uint64_t(0)));
   sampleAccumulator->windDirectionX = static_cast<double>(sram_transfer(uint64_t(0)));
   sampleAccumulator->windDirectionY = static_cast<double>(sram_transfer(uint64_t(0)));
-  sampleAccumulator->rain = sram_transfer(uint64_t(0));//static_cast<double>(sram_transfer(uint64_t(0)));
+  sampleAccumulator->rain = sram_transfer(uint64_t(0));
+  sampleAccumulator->lux = sram_transfer(uint64_t(0));
 
   sampleAccumulator->numSamples = sram_transfer(uint32_t(0));
   sampleAccumulator->numBatterySamples = sram_transfer(uint32_t(0));
@@ -254,6 +255,7 @@ void sram_write_accumulator(WeatherReadingAccumulator *sampleAccumulator) {
   sram_transfer(static_cast<uint64_t>(sampleAccumulator->windDirectionX));
   sram_transfer(static_cast<uint64_t>(sampleAccumulator->windDirectionY));
   sram_transfer(sampleAccumulator->rain);
+  sram_transfer(sampleAccumulator->lux);
 
   sram_transfer(sampleAccumulator->numSamples);
   sram_transfer(sampleAccumulator->numBatterySamples);
@@ -307,6 +309,7 @@ void sram_read_reading(WeatherReading *weatherReading, uint32_t readingIndex) {
   weatherReading->windSpeed = uint32_to_float(sram_transfer(uint32_t(0)));
   weatherReading->windDirection = uint32_to_float(sram_transfer(uint32_t(0)));
   weatherReading->rain = sram_transfer(uint32_t(0));
+  weatherReading->lux = uint32_to_float(sram_transfer(uint32_t(0)));
 
   sram_end_transaction();
 }
@@ -327,6 +330,7 @@ void sram_write_reading(WeatherReading *weatherReading, uint32_t readingIndex) {
   sram_transfer(float_to_uint32(weatherReading->windSpeed));
   sram_transfer(float_to_uint32(weatherReading->windDirection));
   sram_transfer(weatherReading->rain);
+  sram_transfer(float_to_uint32(weatherReading->lux));
 
   sram_end_transaction();
 }

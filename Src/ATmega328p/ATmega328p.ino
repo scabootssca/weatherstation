@@ -29,6 +29,9 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define WIND_VANE_MIN 0
 #define WIND_VANE_MAX 1023
 
+// Lux Calibration (Seems our dome blocks about 6.25% of light based off one uncontrolled rough test)
+#define LUX_DOME_BLOCKING_COEF 1.0625
+
 // Anemometer Calibration (Linear Association)
 // rpm/coef = wind speed in mph
 #define ANEMOMETER_CALIBRATION_COEF 0.09739260404185239 // 10.2677201193868 = samples per 1mph
@@ -75,6 +78,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #include <Adafruit_BME280.h>
 #include "MCP_23A1024.h"
 #include "Adafruit_MCP23008.h"
+#include "BH1750.h"
 
 // Globals
 uint32_t bootTime;
@@ -109,6 +113,7 @@ unsigned int submitTimeoutCountdown = 0;
 Adafruit_MCP23008 mcp; // IO Expander
 RTC_DS1307 RTC; // Real Time Clock
 Adafruit_BME280 bmeSensor; // Termometer, Hygrometer, Barometer
+BH1750 luxMeter; // Lux
 
 SoftwareSerial ESPSerial(ESP_RX_PIN, ESP_TX_PIN);
 
@@ -179,11 +184,13 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(RAIN_BUCKET_PIN), rainBucketISR, RISING);
   sei();
 
-
   pinMode(WIND_VANE_ADC_PIN, INPUT);
 
   // Clock
   RTC.begin();
+
+  // Lux Sensor (BH1750)
+  luxMeter.begin(BH1750_ONE_TIME_HIGH_RES_MODE); // One shot then sleep
 
   // Check to see if the RTC is keeping time.  If it is, load the time from your computer.
   if (CLEAN_START || !RTC.isrunning()) {
@@ -442,6 +449,8 @@ String generate_request_url(WeatherReading weatherReading) {
   outputUrl += weatherReading.windDirection;
 	outputUrl += "&rain=";
 	outputUrl += weatherReading.rain;
+  outputUrl += "&lux=";
+  outputUrl += weatherReading.lux;
 
   outputUrl += "&timestamp=";
   outputUrl += weatherReading.timestamp;
@@ -746,6 +755,13 @@ float read_battery_voltage(float oversampleBits=3.0) {
   return batteryVoltage;
 }
 
+uint16_t read_lux() {
+  luxMeter.begin(BH1750_ONE_TIME_HIGH_RES_MODE); // One shot then sleep
+  uint16_t lux = luxMeter.readLightLevel();
+
+  return lux;
+}
+
 void read_tph(float *dest) {
   //******************************************/
   //* TEMPERATURE, HUMIDITY, BAROMETER BLOCK */
@@ -816,6 +832,8 @@ void take_sample() {
   sampleAccumulator.temperature += int32_t(bmeReadings[0]*100);
   sampleAccumulator.pressure += int32_t(bmeReadings[1]*100);
   sampleAccumulator.humidity += int32_t(bmeReadings[2]*100);
+
+  sampleAccumulator.lux += read_lux();
 
   sampleAccumulator.numSamples++;
 
