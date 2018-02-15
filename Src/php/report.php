@@ -2,8 +2,7 @@
 //ini_set('display_errors', 1);
 //error_reporting(E_ALL | E_STRICT);
 
-require('sqlUserCfg.php');
-$dbConn = new mysqli("localhost", $sqlUser, $sqlPass, $sqlDb);
+$dbConn = new mysqli("localhost", "weather_station", "", 'WeatherStation');
 
 // Check connection
 if ($dbConn->connect_errno) {
@@ -21,12 +20,13 @@ $valueMap = array(
 	"windSpeed"=>"windSpeed",
 	"windDirection"=>'windDirection',
 	"timestamp"=>"time",
-	"batPercent"=>"batteryPercent"
+	"batPercent"=>"batteryPercent",
+	"lux"=>"lux"
 );
 
 $submitKeys = [];
 $submitValues = [];
-$hasSecretKey = false;
+$authenticated = true;
 $valid = true;
 
 // Format the keys correctly
@@ -35,18 +35,18 @@ foreach ($_GET as $getKey => $getValue) {
 		continue;
 	}
 
-	if ($getKey == "key" && $getValue == sha1('frie!ggandham!!%2{[')) {
-		$hasSecretKey = true;
-		continue;
-	}
+	// if ($getKey == "key" && $getValue == sha1('frie!ggandham!!%2{[')) {
+	// 	$authenticated = true;
+	// 	continue;
+	// }
 
 	$submitTime = time();
 
-	// If it's in the future (>10 minute) (We get that sometimes) then don't accept it
-	if ($getKey == "timestamp" && $getValue > $submitTime+600) {
-		$valid = false;
-		break;
-	}
+	// // If it's in the future (>1minute) (We get that sometimes) then don't accept it
+	// if ($getKey == "timestamp" && $getValue > $submitTime+60) {
+	// 	$valid = false;
+	// 	break;
+	// }
 
 	if (array_key_exists($getKey,  $valueMap)) {
 		array_push($submitKeys, $dbConn->real_escape_string($valueMap[$getKey]));
@@ -55,10 +55,10 @@ foreach ($_GET as $getKey => $getValue) {
 }
 
 // If success
-if ($valid && $hasSecretKey && count($submitKeys)) {
-	$query = sprintf("INSERT INTO records (%s) VALUES (%s)",
-		join(", ", $submitKeys),
-		join(", ", $submitValues)
+if ($valid && $authenticated && count($submitKeys)) {
+	$query = sprintf("INSERT INTO `records` (`%s`) VALUES ('%s')",
+		join("`, `", $submitKeys),
+		join("', '", $submitValues)
 	);
 
 	if ($dbConn->query($query)) {
@@ -74,9 +74,9 @@ if ($valid && $hasSecretKey && count($submitKeys)) {
 		printf("Future timestamp > 1min: %s > %s\n", $getValue, $submitTime);
 	}
 
-	if (!$hasSecretKey) {
-		printf("Invalid auth");
-	}
+	// if (!$hasSecretKey) {
+	// 	printf("Invalid auth");
+	// }
 }
 
 printf("\n");

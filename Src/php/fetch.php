@@ -6,30 +6,21 @@ define('DISPLAY_AVERAGED_SAMPLES', False);
 
 define('CHART_DATA', 1<<0);
 define('CHART_MEAN', 1<<1);
+define('CHART_LOOP', 1<<2);
 define('CHART_ALL', CHART_DATA|CHART_MEAN);
 
 function get_data_timeframe() {
 	$maxTime = time();
 	$minTime = $maxTime-43200; // Default time is 12 hours in seconds (43200 seconds)
 	$fromNow = true;
+	$useMinMax = false;
 
-	if (isset($_GET['range']) && $_GET['range']) {
-		$exploded = explode(',', $_GET['range'], 2); // Split from,to
-
-		// If we have a from,to range
-		if (sizeof($exploded) > 1) {
-			$minTime = floatval($exploded[0]);
-			$maxTime = floatval($exploded[1]);
-			$fromNow = false;
-		// Only 1 term
-		} else {
-			$minTime = $maxTime-floatval($exploded[0])*60*60;
-		}
-	} else if (isset($_GET['minDate']) && isset($_GET['maxDate'])) {
+	if (isset($_GET['minDate']) && isset($_GET['maxDate'])) {
 		$parsedTime = strtotime($_GET['minDate']);
 
 		if (is_int($parsedTime)) {
 			$minTime = $parsedTime;
+			$useMinMax = true;
 		}
 
 		$parsedTime = strtotime($_GET['maxDate']);
@@ -42,6 +33,21 @@ function get_data_timeframe() {
 
 			$maxTime = $parsedTime+86400; // So it's the end of the day
 			$fromNow = false;
+			$useMinMax = true;
+		}
+	}
+
+	if ($useMinMax == false && isset($_GET['range']) && $_GET['range']) {
+		$exploded = explode(',', $_GET['range'], 2); // Split from,to
+
+		// If we have a from,to range
+		if (sizeof($exploded) > 1) {
+			$minTime = floatval($exploded[0]);
+			$maxTime = floatval($exploded[1]);
+			$fromNow = false;
+		// Only 1 term
+		} else {
+			$minTime = $maxTime-floatval($exploded[0])*60*60;
 		}
 	}
 
@@ -88,7 +94,7 @@ function get_wind_dir($windDeg, $type=WIND_DIR_TEXT) {//$getInt=false, $getShort
 		'North North West'
 	);
 
-	$steps = 16.0;
+	$steps=16.0;
 	$stepSize = 360/$steps;
 
 	$textWindDir = $directionVerboseNames[0];
@@ -117,14 +123,91 @@ function get_wind_dir($windDeg, $type=WIND_DIR_TEXT) {//$getInt=false, $getShort
 	return $textWindDir;
 }
 
+/*
+array(
+	Label,
+	Y Postfix,
+	Y Function,
+	Chart Type,
+	Chart Displays,
+	Chart Margin.
+	Datapoint Size,
+	Y Attributes,
+	OverlayChart
+)
+*/
 global $chartAttributes;
 $chartAttributes = array(
-	2=>array("Temperature", "°F", function ($x) { return round(($x*1.8)+32, 2); }, 'spline', CHART_ALL, 6, 0, ''),
-	3=>array("Humidity", "%", function ($x) { return round($x, 2); }, 'spline', CHART_DATA|CHART_MEAN, 24, 0, ''),
-	5=>array("Pressure", "mb", function ($x) { return round($x*.01, 2); }, 'spline', CHART_ALL, 0, 0, ''),
-	7=>array("Wind Speed", "mph", function ($x) { return round($x, 1); }, 'spline', CHART_ALL, 12, 0, ''),
-	8=>array("Wind Direction", '', function ($x) { return get_wind_dir($x, WIND_DIR_INT); }, 'spline', CHART_DATA|CHART_MEAN, 6, 0, ""),//"interval: 22,\n					labelFormatter: function (e) { return ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW', 'N'][e.value%15]; }"),
-	6=>array("Battery", "mV", function ($x) { return round($x, 1); }, 'line', CHART_DATA|CHART_MEAN, 18, 0, ''),
+	2=>array(
+		"Temperature",
+		"°F",
+		function ($x) { return round(($x*1.8)+32, 2); },
+		'spline',
+		CHART_ALL,
+		20,
+		3,
+		"includeZero: false,\n",
+		NULL),
+	3=>array(
+		"Humidity",
+		"%",
+		function ($x) { return round($x, 2); },
+		'spline',
+		CHART_DATA|CHART_MEAN,
+		14,
+		3,
+		"includeZero: false,\n",
+		NULL),
+	5=>array(
+		"Pressure",
+		"mb",
+		function ($x) { return round($x*.01, 2); },
+		'spline',
+		CHART_ALL,
+		0,
+		3,
+		"includeZero: false,\n",
+		NULL),
+	9=>array(
+		"Lux",
+		"lux",
+		function ($x) { return $x<=0?'null':$x; },
+		'line',
+		CHART_DATA,
+		0,
+		3,
+		"logarithmic: true,\n",
+		NULL),
+	7=>array(
+		"Wind Speed",
+		"mph",
+		function ($x) { return round($x, 1); },
+		'spline',
+		CHART_ALL,
+		15,
+		3,
+		'',
+		NULL),
+	8=>array(
+		"Wind Direction",
+		'',
+		function ($x) { return get_wind_dir($x, WIND_DIR_INT); },
+		'splineArea',
+		CHART_LOOP,
+		25,
+		5,
+		"interval: 45,\n					labelFormatter: function (e) { return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'][parseInt(e.value/45)>0?parseInt(e.value/45):(8+parseInt(e.value/45))]; }",
+		NULL),
+	6=>array(
+		"Battery",
+		"mV",
+		function ($x) { return round($x, 1); },
+		'line',
+		CHART_DATA|CHART_MEAN,
+		0,
+		3,
+		"includeZero: false,\n",
+		NULL)
 );
 
 Class ChartDefinition {
@@ -152,8 +235,19 @@ Class ChartDefinition {
 					intervalType: "%s",
 					valueFormatString: "MM/DD HH:mm",
 				},
+
 				axisY: {
-					includeZero: false,
+					crosshair : {
+						enabled: true,
+						color: "#7CB5EC",
+						lineDashType: "solid",
+						opacity: .8,
+						thickness: 1,
+						snapToDataPoint: true,
+						//labelFontColor: "#F8F8F8",
+						//labelMaxWidth: 100,
+						label: "",
+					},
 					suffix: "%s",
 					margin: %s,
 					%s
@@ -168,7 +262,7 @@ Class ChartDefinition {
 			';
 
 		// Split the date stamps into the approprite size and count of intervals
-		$secondRange = time()-end($queryResults)[1];
+		$secondRange = time()-$queryResults[0][1];
 
 		// This is all in seconds
 		if ($secondRange/CHART_DIVISION_BASE/CHART_MAX_DIVISIONS < 1) {
@@ -176,7 +270,6 @@ Class ChartDefinition {
 		} else {
 			$interval = (ceil($secondRange/CHART_DIVISION_BASE/CHART_MAX_DIVISIONS)*CHART_DIVISION_BASE);
 		}
-
 
 		// Convert to minutes or hours
 		// Less than an hour do minutes
@@ -190,6 +283,29 @@ Class ChartDefinition {
 		}
 
 		$formattedChartData = '';
+		if ($chartVars[4] & CHART_LOOP) {
+			$color = '222F2F'; // Light Green
+
+			$formattedChartData = sprintf('
+				{
+					type: "%s",
+					lineThickness: %s,
+					markerSize: %s ,
+					connectNullData: false,
+					color: "#%s",
+					xValueFormatString: "MM/DD/YY HH:mm",
+					dataPoints: [
+					%s
+					]
+				}',
+				$chartVars[3],
+				2,
+				$chartVars[6],
+				$color,
+				$this->generate_neighbor_loop($queryResults, $chartVars[2])
+			);
+		}
+
 		if ($chartVars[4] & CHART_DATA) {
 			if ($chartVars[4] & CHART_MEAN && MOVING_MEAN_SAMPLE_SIZE) {
 				// Light blue if there is also a mean
@@ -232,7 +348,7 @@ Class ChartDefinition {
 				{
 					type: "%s",
 					lineThickness: %s,
-					markerSize: 0,
+					markerSize: %s,
 					connectNullData: true,
 					color: "#222F2F",
 					xValueFormatString: "MM/DD/YY HH:mm",
@@ -243,6 +359,7 @@ Class ChartDefinition {
 				($chartVars[4] & CHART_DATA ? ',' : ''),
 				$meanChartType,
 				2,
+				$chartVars[6],
 				$this->generate_moving_mean($queryResults, $chartVars[2], MOVING_MEAN_SAMPLE_SIZE)
 			);
 		}
@@ -271,6 +388,134 @@ Class ChartDefinition {
 		);
 
 		return $output;
+	}
+
+	private function generate_neighbor_loop(&$queryResults, $modifierFunction, $sampleSize=3) {
+		$output = array();
+		$offsetMode = 0;
+
+		// Starting at $sampleSize so we can get info before it
+		// Then we go until length - $sampleSize so we can get info after
+		$numResults = sizeof($queryResults);
+		for ($i = 0; $i < $numResults; $i++) {
+			$total = 0;
+			$numTestPoints = 0;
+			$offset = 0;
+
+			$refValue = $queryResults[$i][$this->index];
+
+			// If we're too close to the edges then use as far as we can
+			$numLowSamples = ($i < $sampleSize ? $i : $sampleSize);
+			$numHighSamples = ($i >= $numResults-$sampleSize ? $numResults-$i-1 : $sampleSize);
+
+			// // Look at the one after this
+			// if ($offsetMode == 0) {
+			// 	if ($numHighSamples) {
+			// 	 	$nextValue = $queryResults[$i+1][$this->index];
+      //
+			// 		$halfDeltaT = intVal((($queryResults[$i+1][1]*1000) - ($queryResults[$i][1]*1000))*.5);
+			// 		$quarterDeltaT = intVal($halfDeltaT*.5);
+      //
+			// 		// If wrapping around the top is closer than going down
+			// 		if ((360+$nextValue-$refValue) < ($refValue-$nextValue)) {
+			// 			$offsetMode = 1;
+			// 		}
+      //
+			// 		// If wrapping around the bottom is closer than going up
+			// 		if ((360-$nextValue+$refValue) < ($nextValue-$refValue)) {
+			// 			$offsetMode = -1;
+			// 		}
+			// 	}
+			// }
+      //
+			// $offsetValue = $refValue;
+      //
+			// // Wrap down
+			// if ($offsetMode == -1) {
+			// 	$offsetValue = $refValue-360;
+			// }
+      //
+			// // Wrap up
+			// if ($offsetMode == 1) {
+			// 	$offsetValue = $refValue+360;
+			// }
+      //
+			// if ($offsetValue > 360*1.5 || $offsetValue < -180) {
+			// 	$offsetMode = 0;
+			// }
+			$offsetValue = $refValue;
+
+			// Add the datapoint at t and value+offset
+			if ($modifierFunction != NULL) {
+				$output[] = sprintf("{ x: new Date(%s), y: %s }", $queryResults[$i][1]*1000, $modifierFunction($offsetValue));
+			} else {
+				$output[] = sprintf("{ x: new Date(%s), y: %s }", $queryResults[$i][1]*1000, $offsetValue);
+			}
+
+			// Look at the one after this
+			if ($numHighSamples) {
+			 	$nextValue = $queryResults[$i+1][$this->index];
+
+				$halfDeltaT = intVal((($queryResults[$i+1][1]*1000) - ($queryResults[$i][1]*1000))*.5);
+				$quarterDeltaT = intVal($halfDeltaT*.5);
+
+				// If wrapping around the top is closer than going down
+				if ((360+$nextValue-$refValue) < ($refValue-$nextValue)) {
+					$halfDeltaV = intVal(abs(360+$nextValue-$refValue)*0.5);
+					$output[] = sprintf("{ x: new Date(%s), y: %s }", ($queryResults[$i][1]*1000)+$halfDeltaT-1, $refValue+$halfDeltaV);
+					$output[] = sprintf("{ x: new Date(%s), y: null }", ($queryResults[$i][1]*1000)+$halfDeltaT);
+					$output[] = sprintf("{ x: new Date(%s), y: %s }", ($queryResults[$i+1][1]*1000)-$halfDeltaT+1, $nextValue-$halfDeltaV);
+				}
+
+				// If wrapping around the bottom is closer than going up
+				if ((360-$nextValue+$refValue) < ($nextValue-$refValue)) {
+					$halfDeltaV = intVal(abs(360+$refValue-$nextValue)*0.5);
+					$output[] = sprintf("{ x: new Date(%s), y: %s }", ($queryResults[$i][1]*1000)+$halfDeltaT-1, $refValue-$halfDeltaV);
+					$output[] = sprintf("{ x: new Date(%s), y: null }", ($queryResults[$i][1]*1000)+$halfDeltaT);
+					$output[] = sprintf("{ x: new Date(%s), y: %s }", ($queryResults[$i+1][1]*1000)-$halfDeltaT+1, $nextValue+$halfDeltaV);
+				}
+			}
+
+			$deviation = 0;
+
+			// Look at the one after this
+			//for ($testIndex = $i+1; $testIndex <= $i+$numHighSamples; $testIndex++) {
+			 	// How far can we go without going more than half a height away
+			// 	$deviation += $refValue-$queryResults[$testIndex][$this->index];
+      //
+			// 	if ($deviation > 180) {
+			// 		$nextRollover = $testIndex;
+			// 		break;
+			// 	}
+			// }
+		}
+					// $nextValue = $queryResults[$testIndex][$this->index];
+					//
+					// $output[] = sprintf("Rollover for %s at %s\n", $i, $testIndex);
+					// $output[] = sprintf("Ref %s Next %s\n", $refValue, $nextValue);
+					//
+					// $halfDeltaT = intVal((($queryResults[$testIndex][1]*1000) - ($queryResults[$testIndex-1][1]*1000))*.5);
+					// $quarterDeltaT = intVal($halfDeltaT*.5);
+					//
+					// // If wrapping around the top is closer than going down
+					// if ((360+$nextValue-$refValue) < ($refValue-$nextValue)) {
+					// 	$halfDeltaV = intVal(abs(360+$nextValue-$refValue)*0.5);
+					// 	$output[] = sprintf("{ x: new Date(%s), y: %s }", ($queryResults[$testIndex-1][1]*1000)+$halfDeltaT-1, $refValue+$halfDeltaV);
+					// 	$output[] = sprintf("{ x: new Date(%s), y: null }", ($queryResults[$testIndex-1][1]*1000)+$halfDeltaT);
+					// 	$output[] = sprintf("{ x: new Date(%s), y: %s }", ($queryResults[$testIndex][1]*1000)-$halfDeltaT+1, $nextValue-$halfDeltaV);
+					// }
+					//
+					// // If wrapping around the bottom is closer than going up
+					// if ((360-$nextValue+$refValue) < ($nextValue-$refValue)) {
+					// 	$halfDeltaV = intVal(abs(360+$refValue-$nextValue)*0.5);
+					// 	$output[] = sprintf("{ x: new Date(%s), y: %s }", ($queryResults[$testIndex-1][1]*1000)+$halfDeltaT-1, $refValue-$halfDeltaV);
+					// 	$output[] = sprintf("{ x: new Date(%s), y: null }", ($queryResults[$testIndex-1][1]*1000)+$halfDeltaT);
+					// 	$output[] = sprintf("{ x: new Date(%s), y: %s }", ($queryResults[$testIndex][1]*1000)-$halfDeltaT+1, $nextValue+$halfDeltaV);
+					// }
+					//
+					// break;
+
+		return join(",\n					", $output);
 	}
 
 	private function generate_moving_mean(&$queryResults, $modifierFunction, $sampleSize=5) {
@@ -394,14 +639,13 @@ function get_temp_extremes($dbConn) {
 		return $queryResult->fetch_row();
 	}
 
-	return array(NONE, NONE);
+	return array(NULL, NULL);
 }
 
 function query_current_stats($existingDbConn=NULL, $maxAge=0, $batSamples=5) {
 	// Get the connection
 	if ($existingDbConn == NULL) {
-		require('sqlUserCfg.php');
-		$dbConn = new mysqli("localhost", $sqlUser, $sqlPass, $sqlDb);
+	 	 $dbConn = new mysqli("localhost", "weather_station", "", 'WeatherStation');
 
 	  // Check connection
 	  if ($dbConn->connect_errno) {
@@ -431,8 +675,7 @@ function query_current_stats($existingDbConn=NULL, $maxAge=0, $batSamples=5) {
 		WHERE records.time > (UNIX_TIMESTAMP()-3600)
 		GROUP BY records.id
 		ORDER BY records.time DESC LIMIT 1
-		",
-	);
+		");
 
 	if ($queryResult = $dbConn->query($query)) {
 		 $currentInfo = $queryResult->fetch_row();
@@ -531,31 +774,52 @@ function generate_chart_header($currentInfo) {
 }
 
 function generate_chart_footer($latestTimestamp=0) {
-	printf('<br /><div class="block, center">');
+	printf('<br /><div class="block, center"><form style="margin-top: -1em;">');
+	printf('<h5 style="margin-top: -1em">Latest data from %s</h5>', strftime("%H:%M on %A, %B %d", $latestTimestamp));
+	printf('<h5>Showing %s -to- %s</h5><br />',
+		strftime('%D %H:%M', CHART_MIN_TIMESTAMP),
+		strftime('%D %H:%M', (CHART_MAX_TIMESTAMP > $latestTimestamp) ? $latestTimestamp : CHART_MAX_TIMESTAMP)
+	);
+	printf('<h3>Change data range:</h3>');
 
 	if ($latestTimestamp) {
+		$hourRange = '';
+
 		if (CHART_RANGE_IS_UNTIL_CURRENT) {
-			printf('<h5>Showing last %s hours</h5>', round((CHART_MAX_TIMESTAMP-CHART_MIN_TIMESTAMP)/60/60, 1));
-			printf('<h5 style="margin-top: -1em">Latest data from %s</h5>', strftime("%H:%M on %A, %B %d", $latestTimestamp));
-		} else {
-			printf('<h5>Showing %s -to- %s</h5>',
-				strftime('%D %H:%M', CHART_MIN_TIMESTAMP),
-				strftime('%D %H:%M', (CHART_MAX_TIMESTAMP > $latestTimestamp) ? $latestTimestamp : CHART_MAX_TIMESTAMP)
-			);
+			$hourRange = round((CHART_MAX_TIMESTAMP-CHART_MIN_TIMESTAMP)/60/60, 1);
 		}
-	} else {
-		printf('<h5>Showing %s -to- %s</h5>',
-			strftime('%D %H:%M', CHART_MIN_TIMESTAMP),
-			strftime('%D %H:%M', CHART_MAX_TIMESTAMP)
-		);
+
+		$optionText = '<div id="dateRange">Show last <select name="range"><option value="%s">%s</option>';
+
+		if ($hourRange != 24) {
+			$optionText .= '<option value="24">24</option>';
+		}
+
+		if ($hourRange != 12) {
+			$optionText .= '<option value="12">12</option>';
+		}
+
+		if ($hourRange != 6) {
+			$optionText .= '<option value="6">6</option>';
+		}
+
+		if ($hourRange != 2) {
+			$optionText .= '<option value="2">2</option>';
+		}
+
+		$optionText .= '</select> hours<br /><span>-or-</span><br />';
+
+		printf($optionText, $hourRange, $hourRange);
 	}
 
-	printf('<h6>Change data range:</h6><form style="margin-top: -1em;">From: <input type="date" name="minDate" max="%s"> To: <input type="date" name="maxDate" max="%s"><br /><br /><input type="submit" value="Update"></form><br />',
+	printf('From: <input type="date" name="minDate" max="%s" value="%s"><br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;To: <input type="date" name="maxDate" max="%s" value="%s"><br /><br /><input type="submit" value="Update"></form><br />',
 		strftime('%Y-%m-%d'),
-		strftime('%Y-%m-%d')
+		$hourRange==''?strftime('%Y-%m-%d', CHART_MIN_TIMESTAMP):'',
+		strftime('%Y-%m-%d'),
+		$hourRange==''?strftime('%Y-%m-%d', CHART_MAX_TIMESTAMP):''
 	);
 
-	print('</div>');
+	print('</div></div><br /><br />');
 }
 
 function show_no_results($error="") {
@@ -565,8 +829,7 @@ function show_no_results($error="") {
 }
 
 function queryDatabase() {
-	require('sqlUserCfg.php');
-	$dbConn = new mysqli("localhost", $sqlUser, $sqlPass, $sqlDb);
+	$dbConn = new mysqli("localhost", "weather_station", "", 'WeatherStation');
 
 	// Check connection
 	if ($dbConn->connect_errno) {
@@ -600,6 +863,7 @@ function queryDatabase() {
 					AVG(nearColumns.batteryMv) batteryMv,
 					AVG(nearColumns.windSpeed) windSpeed,
 					AVG(nearColumns.windDirection) windDirection,
+					AVG(nearColumns.lux) lux,
 			FROM records
 				JOIN records nearColumns ON nearColumns.id > records.id-%s AND nearColumns.id < records.id+%s
 			WHERE records.time >= %s AND records.time <= %s
@@ -615,9 +879,9 @@ function queryDatabase() {
 		);
 	} else {
 		$query = sprintf("SELECT
-			id, time, temperature, humidity, heatIndex, pressure, batteryMv, windSpeed, windDirection
+			id, time, temperature, humidity, heatIndex, pressure, batteryMv, windSpeed, windDirection, lux
 			FROM records WHERE time >= %s AND time <= %s
-			AND id MOD %s = 0 ORDER BY time DESC
+			AND id MOD %s = 0 ORDER BY time ASC
 			",
 			$dbConn->real_escape_string(CHART_MIN_TIMESTAMP),
 			$dbConn->real_escape_string(CHART_MAX_TIMESTAMP),
@@ -665,7 +929,7 @@ function generatePage() {
 
 			$currentInfo = query_current_stats($dbConn);
 
-			$latestTimestamp = array_values(array_slice($queryResults, -1))[0];[5];
+			$latestTimestamp = array_values(array_slice($queryResults, -1))[0][1];
 
 			if ($currentInfo) {
 				$latestTimestamp = $currentInfo[5];
@@ -683,7 +947,7 @@ function generatePage() {
 
 			generate_chart_header($currentInfo);
 			show_no_results();
-			generate_chart_footer();
+			generate_chart_footer($currentInfo[5]);
 		}
 	// Unsucessful query
 	} else {
@@ -692,7 +956,7 @@ function generatePage() {
 
 		generate_chart_header($currentInfo);
 		show_no_results("Unsucessful Query");
-		generate_chart_footer();
+		generate_chart_footer($currentInfo[5]);
 	}
 
 	print("<script src=\"init.js\"></script>");
@@ -712,8 +976,7 @@ function generate_wind_table($dbConn=NULL) {
 	$success = false;
 
 	if ($dbConn == NULL) {
-		require('sqlUserCfg.php');
-		$dbConn = new mysqli("localhost", $sqlUser, $sqlPass, $sqlDb);
+		$dbConn = new mysqli("localhost", "weather_station", "", 'WeatherStation');
 	}
 
  // Check connection

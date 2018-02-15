@@ -40,8 +40,7 @@ output_header('Local Wind Rose');
 <body>
 
 <?php
-require('sqlUserCfg.php');
-$dbConn = new mysqli("localhost", $sqlUser, $sqlPass, $sqlDb);
+$dbConn = new mysqli("localhost", "weather_station", "", 'WeatherStation');
 
 $currentInfo = query_current_stats($dbConn);
 

@@ -21,6 +21,14 @@ function output_header($pageTitle="Historical Weather Data", $headHtml='') {
 		background-color: #FBFBFB;
 	}
 
+	#dateRange {
+		font-size: 75%%;
+	}
+
+	#dateRange span {
+		line-height: 2em;
+	}
+
 	.center {
 		margin-left: auto;
 		margin-right: auto;
@@ -66,8 +74,10 @@ function output_header($pageTitle="Historical Weather Data", $headHtml='') {
 	}
 
 	.header {
-		height: 120px;
+		min-height: 120px;
 		text-align: center;
+		margin-left: 100px;
+		margin-right: 100px;
 	}
 
 	#windLink {
