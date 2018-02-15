@@ -23,25 +23,25 @@ On Esp:
 [32-127] readingAccumulator
 [128+]   readings
 */
-#define SRAM_POPULATED_KEY 0b0110100110010110 // 27030
+#define SRAM_POPULATED_KEY 0xFAD00BA6
 
 // Hopefully it won't randomly be this
-#define SRAM_ADDR_POPULATED 0
-#define SRAM_SIZE_POPULATED 2
+#define SRAM_ADDR_POPULATED 5
+#define SRAM_SIZE_POPULATED 4
 
 // Reading Buffer Pointers
-#define SRAM_ADDR_READINGS_READ_INDEX 2
+#define SRAM_ADDR_READINGS_READ_INDEX 10
 #define SRAM_SIZE_READINGS_READ_INDEX 4
-#define SRAM_ADDR_READINGS_WRITE_INDEX 6
+#define SRAM_ADDR_READINGS_WRITE_INDEX 20
 #define SRAM_SIZE_READINGS_WRITE_INDEX 4
 
 // Ongoing accumulator
 #define SRAM_ADDR_ACCUMULATOR 32
-#define SRAM_SIZE_ACCUMULATOR 96
+#define SRAM_SIZE_ACCUMULATOR sizeof(WeatherReadingAccumulator)
 
 // Readings will directly follow in sram, next page (Each reading will use 1 page)
-#define SRAM_ADDR_READINGS 128
-#define SRAM_SIZE_READINGS 32
+#define SRAM_ADDR_READINGS SRAM_ADDR_ACCUMULATOR+SRAM_SIZE_ACCUMULATOR
+#define SRAM_SIZE_READINGS sizeof(WeatherReading)
 #define SRAM_MAX_READINGS int((SRAM_MAX_ADDRESS-SRAM_ADDR_READINGS)/SRAM_SIZE_READINGS)
 
 void print_bin(uint64_t bytes, int numBits, bool newLine=true) {
@@ -69,9 +69,14 @@ void sram_init(int csPin) {
   Serial.println("Initilizing SRAM");
 
   pinMode(csPin, OUTPUT);
+  digitalWrite(csPin, HIGH);
+  delay(1);
   digitalWrite(csPin, LOW);
   delay(1);
   digitalWrite(csPin, HIGH);
+
+  Serial.print("SRAM Capacity: ");
+  Serial.println(SRAM_MAX_READINGS);
 }
 
 bool sram_begin_transaction(bool mode, uint32_t address, int size) {
@@ -89,9 +94,7 @@ bool sram_begin_transaction(bool mode, uint32_t address, int size) {
   Serial.println(address);
   #endif
 
-
-  uint32_t spiHz = 10000000; // 10MHz
-  SPI.beginTransaction(SPISettings(spiHz, MSBFIRST, SPI_MODE0));
+  SPI.beginTransaction(SPISettings(SPI_HZ, MSBFIRST, SPI_MODE0));
   digitalWrite(SRAM_CS_PIN, LOW);
   delay(1);
 
@@ -266,17 +269,24 @@ void sram_write_accumulator(WeatherReadingAccumulator *sampleAccumulator) {
 bool sram_restore(WeatherReadingAccumulator *sampleAccumulator) {
   // See if the populated key was set
   sram_begin_transaction(SRAM_MODE_READ, SRAM_ADDR_POPULATED, SRAM_SIZE_POPULATED);
-  uint16_t storedValue = sram_transfer(uint16_t(0));
-  bool previouslyPopulated = (storedValue == SRAM_POPULATED_KEY);
+  uint32_t storedValue = sram_transfer(uint32_t(0));
+  bool previouslyPopulated = (storedValue-SRAM_POPULATED_KEY) == 0;
   sram_end_transaction();
 
-  // Serial.print("Stored value: ");
-  // print_bin(storedValue, 16, false);
-  // Serial.println();
+  Serial.print("Populated: ");
+  Serial.println(previouslyPopulated);
+
+  Serial.print("Stored cookie: ");
+  print_bin(storedValue, 32, false);
+  Serial.println();
+
+  Serial.print("Verify cookie: ");
+  print_bin(SRAM_POPULATED_KEY, 32, false);
+  Serial.println();
 
   // Set the populated key
   sram_begin_transaction(SRAM_MODE_WRITE, SRAM_ADDR_POPULATED, SRAM_SIZE_POPULATED);
-  sram_transfer(uint16_t(SRAM_POPULATED_KEY));
+  sram_transfer(uint32_t(SRAM_POPULATED_KEY));
   sram_end_transaction();
 
   // Read the accumulator here

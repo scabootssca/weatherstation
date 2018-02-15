@@ -19,6 +19,8 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define CLEAN_START 0 // This will mark SRAM as unpopulated and update rtc to compile time
 #define UPLOAD_TIME_OFFSET 53
 
+#define SPI_HZ 500000 // 500Khz
+
 // Sample and Reading defines
 #define SAMPLE_INTERVAL 2000
 #define READING_INTERVAL 300000 //SAMPLE_INTERVAL*5///300000 // 300000 = 5 minutes
