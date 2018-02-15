@@ -373,12 +373,14 @@ void loop() {
     zeroWeatherReading(&sampleAccumulator);
     sram_write_accumulator(&sampleAccumulator);
 
+    #if DEBUG
     Serial.println();
     Serial.print(F("--(WEATHER READING ("));
     Serial.print(weatherReadingWriteIndex);
     Serial.println(F("))--"));
     printWeatherReading(currentReading);
     Serial.println();
+    #endif
 
     // Update the index and save it to sram
     weatherReadingWriteIndex++;
@@ -602,20 +604,20 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
   float pinMv = (vccMv / 1023.0) * channelPinReading;
 	float readingMv = pinMv * ratio;
 
-	DEBUG_PRINT("ADC channel: ");
-	DEBUG_PRINT(channel);
-	DEBUG_PRINT(" refPin: ");
-	DEBUG_PRINT(refPinReading);
-  DEBUG_PRINT(" channelPin: ");
-  DEBUG_PRINT(channelPinReading);
-	DEBUG_PRINT(" vccMv: ");
-	DEBUG_PRINT(vccMv);
-	DEBUG_PRINT(" pinMv: ");
-	DEBUG_PRINT(pinMv);
-  DEBUG_PRINT(" readingMv: ");
-  DEBUG_PRINT(readingMv);
-	DEBUG_PRINT(" resultMv: ");
-	DEBUG_PRINTLN(readingMv+offset);
+	DEBUG2_PRINT("ADC channel: ");
+	DEBUG2_PRINT(channel);
+	DEBUG2_PRINT(" refPin: ");
+	DEBUG2_PRINT(refPinReading);
+  DEBUG2_PRINT(" channelPin: ");
+  DEBUG2_PRINT(channelPinReading);
+	DEBUG2_PRINT(" vccMv: ");
+	DEBUG2_PRINT(vccMv);
+	DEBUG2_PRINT(" pinMv: ");
+	DEBUG2_PRINT(pinMv);
+  DEBUG2_PRINT(" readingMv: ");
+  DEBUG2_PRINT(readingMv);
+	DEBUG2_PRINT(" resultMv: ");
+	DEBUG2_PRINTLN(readingMv+offset);
 
   return readingMv + offset;
 }
@@ -641,13 +643,13 @@ bool recv_esp_serial() {
 			ESPNewline = false;
 
 			if (!ESPReplyBuffering) {
-				Serial.write("ESP (recv)");
+				DEBUG_PRINT("ESP (recv)");
 			}
 		}
 
-		// Print it if it's not a reply to us
+		// Print it if it's not a reply to us (Just it trying to print something)
 		if (!ESPReplyBuffering && rxByte) {
-			Serial.write(rxByte);
+			Serial.print(rxByte);
 		}
 
 		if (rxByte == 126) {
@@ -672,8 +674,8 @@ float read_anemometer() {
   anemometerPulses = 0;
   sei();
 
-  // DEBUG_PRINT("Num anemometer pulses: ");
-  // DEBUG_PRINTLN(numTimelyPulses);
+  DEBUG3_PRINT("Num anemometer pulses: ");
+  DEBUG3_PRINTLN(numTimelyPulses);
 
   float anemometerMph = (numTimelyPulses * 0.5) * (60000.0 / (currentReadingMillis-lastAnemometerReadingMillis)) * ANEMOMETER_CALIBRATION_COEF;
 
@@ -690,8 +692,8 @@ int read_rain() {
   rainBucketPulses = 0;
   sei();
 
-  // DEBUG_PRINT("Num rain pulses: ");
-  // DEBUG_PRINTLN(numTimelyPulses);
+  DEBUG3_PRINT("Num rain pulses: ");
+  DEBUG3_PRINTLN(numTimelyPulses);
 
   return numTimelyPulses;
 }
@@ -704,27 +706,18 @@ void read_wind_vane(double *destX, double *destY) {
   *destY += sin(windRadians);
   *destX += cos(windRadians);
 
+  DEBUG3_PRINT(F("Wind Degrees: "));
+  DEBUG3_PRINTLN(windDegrees);
+
+  #if DEBUG >= 3
   float yPos = sin(windRadians);
   float xPos = cos(windRadians);
-
-  DEBUG_PRINT(F("Wind Degrees: "));
-  DEBUG_PRINTLN(windDegrees);
-  DEBUG_PRINT(F("Wind Radians: "));
-  DEBUG_PRINTLN(windRadians);
-
-  // DEBUG_PRINT(F("Wind Cartesian Pos (X, Y) ("));
-  // DEBUG_PRINT(xPos);
-  // DEBUG_PRINT(F(", "));
-  // DEBUG_PRINT(yPos);
-  // DEBUG_PRINTLN(F(")"));
-  //
-  // Serial.print(F("Total (X, Y) ("));
-  // Serial.print(double(*destX));
-  // Serial.print(", ");
-  // Serial.print(double(*destY));
-  // Serial.println(")");
-
-
+  DEBUG3_PRINT(F("Wind Pos (X, Y) ("));
+  DEBUG3_PRINT(xPos);
+  DEBUG3_PRINT(F(", "));
+  DEBUG3_PRINT(yPos);
+  DEBUG3_PRINTLN(F(")"));
+  #endif
 }
 
 float read_battery_voltage(float oversampleBits=3.0) {
@@ -749,8 +742,8 @@ float read_battery_voltage(float oversampleBits=3.0) {
   mcp.digitalWrite(MCP_SOLAR_ENABLE_PIN, HIGH);
 
   // Output
-  DEBUG_PRINT("Battery Voltage: ");
-  DEBUG_PRINTLN(batteryVoltage);
+  DEBUG2_PRINT("Battery Voltage: ");
+  DEBUG2_PRINTLN(batteryVoltage);
 
   return batteryVoltage;
 }
@@ -795,21 +788,23 @@ void read_tph(float *dest) {
 void take_sample() {
   #if DEBUG
   digitalWrite(OK_LED_PIN, HIGH);
-  DEBUG_PRINTLN();
-  DEBUG_PRINT(F("--(Taking sample: "));
-  DEBUG_PRINT(sampleAccumulator.numSamples+1);
-  DEBUG_PRINT(F("/"));
-  DEBUG_PRINT(SAMPLES_PER_READING);
-  DEBUG_PRINTLN(F(")--"));
-  DEBUG_PRINT(F("For Write Index: "));
-  DEBUG_PRINT(weatherReadingWriteIndex);
-  DEBUG_PRINT(F(" | Read Index: "));
-  DEBUG_PRINTLN(weatherReadingReadIndex);
-  DEBUG_PRINT(F("Uptime: "));
-  DEBUG_PRINT((get_timestamp()-bootTime)/60.0);
-  DEBUG_PRINT(F(" (mins) since "));
+  DEBUG2_PRINTLN();
+  DEBUG2_PRINT(F("--(Taking sample: "));
+  DEBUG2_PRINT(sampleAccumulator.numSamples+1);
+  DEBUG2_PRINT(F("/"));
+  DEBUG2_PRINT(SAMPLES_PER_READING);
+  DEBUG2_PRINTLN(F(")--"));
+  DEBUG2_PRINT(F("For Write Index: "));
+  DEBUG2_PRINT(weatherReadingWriteIndex);
+  DEBUG2_PRINT(F(" | Read Index: "));
+  DEBUG2_PRINTLN(weatherReadingReadIndex);
+  DEBUG2_PRINT(F("Uptime: "));
+  DEBUG2_PRINT((get_timestamp()-bootTime)/60.0);
+  DEBUG2_PRINT(F(" (mins) since "));
+  #if DEBUG >= 2
   print_pretty_timestamp(bootTime);
-  DEBUG_PRINTLN();
+  #endif
+  DEBUG2_PRINTLN();
   #endif
 
   lastSampleMillis = millis();
@@ -839,9 +834,12 @@ void take_sample() {
 
   sram_write_accumulator(&sampleAccumulator);
 
-  #if DEBUG
+  #if DEBUG >= 2
   printWeatherReading(sampleAccumulator);
-  DEBUG_PRINTLN();
+  DEBUG2_PRINTLN();
+  #endif
+
+  #if DEBUG
   digitalWrite(OK_LED_PIN, LOW);
   #endif
 }

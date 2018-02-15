@@ -3,7 +3,11 @@
 
 #include "RTClib.h"
 
-#define DEBUG 3
+// 0 = Off
+// 1 = Basic: Print Readings, Blink Indicator, ESP messages
+// 2 = Extra: Basic + Print Samples, Battery Readings
+// 3 = Full: Extra + In Depth Sample Info
+#define DEBUG 1
 
 #define ESP_MSG_PING 0
 #define ESP_MSG_REQUEST 1
@@ -18,6 +22,22 @@
 #else
 #define DEBUG_PRINT(...)
 #define DEBUG_PRINTLN(...)
+#endif
+
+#if DEBUG >= 2
+#define DEBUG2_PRINT(...) Serial.print( __VA_ARGS__ )
+#define DEBUG2_PRINTLN(...) Serial.println( __VA_ARGS__ )
+#else
+#define DEBUG2_PRINT(...)
+#define DEBUG2_PRINTLN(...)
+#endif
+
+#if DEBUG >= 3
+#define DEBUG3_PRINT(...) Serial.print( __VA_ARGS__ )
+#define DEBUG3_PRINTLN(...) Serial.println( __VA_ARGS__ )
+#else
+#define DEBUG3_PRINT(...)
+#define DEBUG3_PRINTLN(...)
 #endif
 
 // void send_serial(SoftwareSerial *serial, char messageType, const char *value) {
