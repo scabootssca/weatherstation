@@ -17,6 +17,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define WD_TIMEOUT WDTO_2S
 
 #define CLEAN_START 0 // This will mark SRAM as unpopulated and update rtc to compile time
+#define UPLOAD_TIME_OFFSET 53
 
 // Sample and Reading defines
 #define SAMPLE_INTERVAL 2000
@@ -201,8 +202,12 @@ void setup() {
     #endif
 
     // This will reflect the time that your sketch was compiled
-    RTC.adjust(DateTime(DateTime(__DATE__, __TIME__) - TimeSpan(60*60*GMT_OFFSET)));
+    // Sucks cause if it takes forever to upload then its funny
+    RTC.adjust(DateTime(DateTime(__DATE__, __TIME__) - TimeSpan(60*60*GMT_OFFSET) + TimeSpan(UPLOAD_TIME_OFFSET)));
   }
+
+  // Store boot time
+  bootTime = RTC.now().unixtime();
 
   // SRAM init
   sram_init(SRAM_CS_PIN); // Will set pin mode and such
@@ -234,9 +239,6 @@ void setup() {
   DEBUG_PRINTLN(weatherReadingReadIndex);
   DEBUG_PRINT(F("Reading Write Index: "));
   DEBUG_PRINTLN(weatherReadingWriteIndex);
-
-  // Store boot time
-  bootTime = RTC.now().unixtime();
 
   // BME280
   bmeConnected = bmeSensor.begin(0x76);
