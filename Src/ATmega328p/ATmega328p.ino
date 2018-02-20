@@ -104,6 +104,7 @@ uint32_t weatherReadingReadIndex = 0;
 #define ESP_STATE_SLEEP 0
 #define ESP_STATE_IDLE 1
 #define ESP_STATE_AWAITING_RESULT 2
+#define ESP_STATE_WAKING 3
 
 unsigned short espState = ESP_STATE_SLEEP;
 
@@ -363,9 +364,9 @@ void esp_reset() {
   DEBUG_PRINTLN(F("Resetting ESP.."));
   pinMode(ESP_RESET_PIN, OUTPUT);
   digitalWrite(ESP_RESET_PIN, LOW);
-  delay(5);
+  delay(20);
   digitalWrite(ESP_RESET_PIN, HIGH);
-  delay(5);
+  delay(20);
   digitalWrite(ESP_RESET_PIN, LOW);
   pinMode(ESP_RESET_PIN, INPUT);
   delay(10);
@@ -630,6 +631,11 @@ void send_esp_serial(char messageType, const char *value) {
 bool recv_esp_serial() {
 	// Print ESP serial messages
 	if (ESPSerial.available() > 0) {
+    // If we're waiting to see if it's alive
+    if (espState == ESP_STATE_WAKING) {
+      espState = ESP_STATE_IDLE;
+    }
+
 		uint8_t rxByte = ESPSerial.read();
 
 		if (ESPNewline) {
