@@ -648,7 +648,7 @@ bool recv_esp_serial() {
 
 		// Print it if it's not a reply to us (Just it trying to print something)
 		if (!ESPReplyBuffering && rxByte) {
-			Serial.print(rxByte);
+			Serial.print((char)rxByte);
 		}
 
 		if (rxByte == 126) {
