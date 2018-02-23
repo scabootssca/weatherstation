@@ -17,7 +17,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define WD_TIMEOUT WDTO_8S
 
 #define CLEAN_START 0 // This will mark SRAM as unpopulated and update rtc to compile time
-#define UPLOAD_TIME_OFFSET 53
+#define UPLOAD_TIME_OFFSET 0//53
 
 #define SPI_HZ 500000 // 500Khz
 
