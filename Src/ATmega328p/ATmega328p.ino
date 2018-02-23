@@ -98,8 +98,8 @@ unsigned long lastRainBucketReadingMillis = 0;
 
 WeatherReadingAccumulator sampleAccumulator;
 
-uint32_t weatherReadingWriteIndex = 0;
-uint32_t weatherReadingReadIndex = 0;
+uint8_t weatherReadingWriteIndex = 0;
+uint8_t weatherReadingReadIndex = 0;
 
 #define ESP_STATE_SLEEP 0
 #define ESP_STATE_IDLE 1
@@ -565,7 +565,7 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
 
 	// Get the vcc mV
 	//////////////////////////////
-	float referencePinMv = 2500; //2500.0;
+	int referencePinMv = 2500;
 
 	mcp.digitalWrite(MCP_REFV_ENABLE_PIN, LOW);
 	delay(10); // For refV to stabilize
@@ -697,29 +697,18 @@ int read_rain() {
   return numTimelyPulses;
 }
 
-void read_wind_vane(double *destX, double *destY) {
-  int windVanePinReading = analogRead(WIND_VANE_ADC_PIN);
-  int windDegrees = map(windVanePinReading, WIND_VANE_MIN, WIND_VANE_MAX, 0, 360);
+void read_wind_vane(float *destX, float *destY) {
+  int windDegrees = map(analogRead(WIND_VANE_ADC_PIN), WIND_VANE_MIN, WIND_VANE_MAX, 0, 360);
   float windRadians = windDegrees * M_PI / 180;
 
   *destY += sin(windRadians);
   *destX += cos(windRadians);
 
-  DEBUG3_PRINT(F("Wind Degrees: "));
-  DEBUG3_PRINTLN(windDegrees);
-
-  #if DEBUG >= 3
-  float yPos = sin(windRadians);
-  float xPos = cos(windRadians);
-  DEBUG3_PRINT(F("Wind Pos (X, Y) ("));
-  DEBUG3_PRINT(xPos);
-  DEBUG3_PRINT(F(", "));
-  DEBUG3_PRINT(yPos);
-  DEBUG3_PRINTLN(F(")"));
-  #endif
+  // DEBUG3_PRINT(F("Wind Degrees: "));
+  // DEBUG3_PRINTLN(windDegrees);
 }
 
-float read_battery_voltage(float oversampleBits=3.0) {
+float read_battery_voltage(int oversampleBits=3) {
   //1.33511348465; // R2/R1 3.008/1.002
   float dividerRatio = 1.335;
 
@@ -749,9 +738,7 @@ float read_battery_voltage(float oversampleBits=3.0) {
 
 uint16_t read_lux() {
   luxMeter.begin(BH1750_ONE_TIME_HIGH_RES_MODE); // One shot then sleep
-  uint16_t lux = luxMeter.readLightLevel();
-
-  return lux;
+  return luxMeter.readLightLevel();
 }
 
 void read_tph(float *dest) {
@@ -816,7 +803,7 @@ void take_sample() {
   sampleAccumulator.rain += read_rain();
 
   if (sampleAccumulator.numSamples%BATTERY_SAMPLE_MODULO == 0){
-    sampleAccumulator.battery += int32_t(read_battery_voltage()*100);
+    sampleAccumulator.batteryMv += int32_t(read_battery_voltage()*100);
     sampleAccumulator.numBatterySamples++;
   }
 

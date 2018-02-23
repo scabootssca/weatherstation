@@ -14,7 +14,7 @@ Needs Src/shared/config.h made with this format:
 #define WIFI_SSID "XXXXXXXXXXX"
 #define WIFI_PASS "*******************"
 #define GMT_OFFSET XX (-X or just X in hours)
-#define ESP_ATMEGA_BAUD_RATE 1200
+#define ESP_ATMEGA_BAUD_RATE 4800
 
 #endif
 ```

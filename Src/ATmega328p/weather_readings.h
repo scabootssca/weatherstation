@@ -7,7 +7,7 @@ struct WeatherReading {
 	float temperature = 0;
 	float humidity = 0;
 	float pressure = 0;
-	float battery = 0;
+	float batteryMv = 0;
 	float windSpeed = 0;
 	float windDirection = 0;
 	float lux = 0;
@@ -18,20 +18,20 @@ struct WeatherReadingAccumulator {
 	uint32_t timestamp;
 
 	// Bme sample things
-	int64_t temperature = 0;
-	uint64_t humidity = 0;
+	int32_t temperature = 0;
+	uint32_t humidity = 0;
 	uint64_t pressure = 0;
 
-	uint64_t battery = 0;
-	uint64_t windSpeed = 0;
-	double windDirectionX = 0;
-	double windDirectionY = 0;
-	uint64_t rain = 0;
+	uint32_t batteryMv = 0;
+	uint32_t windSpeed = 0;
+	float windDirectionX = 0;
+	float windDirectionY = 0;
+	uint32_t rain = 0;
 
 	uint64_t lux = 0;
 
-	uint32_t numSamples = 0;
-	uint32_t numBatterySamples = 0;
+	uint8_t numSamples = 0;
+	uint8_t numBatterySamples = 0;
 };
 
 void zeroWeatherReading(WeatherReading *reading) {
@@ -39,7 +39,7 @@ void zeroWeatherReading(WeatherReading *reading) {
 	reading->temperature = 0;
 	reading->humidity = 0;
 	reading->pressure = 0;
-	reading->battery = 0;
+	reading->batteryMv = 0;
 	reading->windSpeed = 0;
 	reading->windDirection = 0;
 	reading->rain = 0;
@@ -51,7 +51,7 @@ void zeroWeatherReading(WeatherReadingAccumulator *reading) {
 	reading->temperature = 0;
 	reading->humidity = 0;
 	reading->pressure = 0;
-	reading->battery = 0;
+	reading->batteryMv = 0;
 	reading->windSpeed = 0;
 	reading->windDirectionX = 0;
 	reading->windDirectionY = 0;
@@ -66,15 +66,15 @@ void store_accumulator(WeatherReading *dest, WeatherReadingAccumulator src) {
 	dest->temperature = (src.temperature/float(src.numSamples))*.01;
 	dest->humidity = (src.humidity/float(src.numSamples))*.01;
 	dest->pressure = (src.pressure/float(src.numSamples))*.01;
-	dest->battery = (src.battery/float(src.numBatterySamples))*.01;
+	dest->batteryMv = (src.batteryMv/float(src.numBatterySamples))*.01;
 	dest->windSpeed = (src.windSpeed/float(src.numSamples))*.01;
 
 	// Do the average of the X,Y cartesian wind coordinates
 	// Convert that to polar and you have your degrees and the variance
 	// Need that because avg of the degrees for getting a circular mean
 	// eg. (359+0)/2 == ~180 is totally wrong says south not north
-	double avgWindX = src.windDirectionX/double(src.numSamples);
-	double avgWindY = src.windDirectionY/double(src.numSamples);
+	float avgWindX = src.windDirectionX/float(src.numSamples);
+	float avgWindY = src.windDirectionY/float(src.numSamples);
 
 	// Serial.print(F("Avg (X, Y) ("));
 	// Serial.print(avgWindX);
@@ -138,7 +138,7 @@ void printWeatherReading(WeatherReading reading) {
 	Serial.print(reading.humidity);
 	Serial.println('%');
 	Serial.print("Battery: ");
-	Serial.print(reading.battery);
+	Serial.print(reading.batteryMv);
 	Serial.println("mV");
 	Serial.print("Wind Speed: ");
 	Serial.print(reading.windSpeed);
