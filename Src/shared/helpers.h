@@ -7,7 +7,7 @@
 // 1 = Basic: Print Readings, Blink Indicator, ESP messages
 // 2 = Extra: Basic + Print Samples, Battery Readings
 // 3 = Full: Extra + In Depth Sample Info
-#define DEBUG 1
+#define DEBUG 3
 
 #define ESP_MSG_PING 0
 #define ESP_MSG_REQUEST 1
