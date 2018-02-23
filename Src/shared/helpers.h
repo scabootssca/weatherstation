@@ -89,20 +89,6 @@ void print_pretty_timestamp(uint32_t unixtime) {
 	Serial.print(readingTimeLocal.second(), DEC);
 }
 
-
-void waitMs(int delayMs) {
-  delay(delayMs);
-  return;
-
-	int startTime = millis();
-
-	while (millis()-startTime < delayMs)
-	{
-		delay(1);
-		//ESP.wdtFeed();
-	}
-}
-
 float convertCtoF(float c) {
   return c * 1.8 + 32;
 }
