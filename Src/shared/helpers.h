@@ -64,6 +64,12 @@
 //   return 0;
 // }
 
+int getFreeRam () {
+  extern int __heap_start, *__brkval;
+  int v;
+  return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
+}
+
 void print_pretty_timestamp(uint32_t unixtime) {
 	// For displaying them in local time
 	DateTime readingTimeLocal = DateTime(DateTime(unixtime) + TimeSpan(60*60*GMT_OFFSET));

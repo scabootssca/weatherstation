@@ -784,6 +784,8 @@ void take_sample() {
   DEBUG2_PRINT(weatherReadingWriteIndex);
   DEBUG2_PRINT(F(" | Read Index: "));
   DEBUG2_PRINTLN(weatherReadingReadIndex);
+  DEBUG2_PRINT(F("Free Ram (bytes): "));
+  DEBUG2_PRINTLN(getFreeRam());
   DEBUG2_PRINT(F("Uptime: "));
   DEBUG2_PRINT((get_timestamp()-bootTime)/60.0);
   DEBUG2_PRINT(F(" (mins) since "));
