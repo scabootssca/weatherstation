@@ -687,17 +687,19 @@ float read_anemometer() {
 }
 
 int read_rain() {
-  //unsigned long currentReadingMillis = millis();
-
-  cli();
-  int numTimelyPulses = rainBucketPulses;
   rainBucketPulses = 0;
-  sei();
-
-  DEBUG3_PRINT("Num rain pulses: ");
-  DEBUG3_PRINTLN(numTimelyPulses);
-
-  return numTimelyPulses;
+  return 0;
+  // //unsigned long currentReadingMillis = millis();
+  //
+  // cli();
+  // int numTimelyPulses = rainBucketPulses;
+  // rainBucketPulses = 0;
+  // sei();
+  //
+  // DEBUG3_PRINT(F("Num rain pulses: "));
+  // DEBUG3_PRINTLN(numTimelyPulses);
+  //
+  // return numTimelyPulses;
 }
 
 void read_wind_vane(float *destX, float *destY) {
