@@ -378,14 +378,10 @@ void loop() {
   wdt_reset();
   recv_esp_serial();
 
+  // If we're waiting for the esp to send the result of a http request
   if (espState == ESP_STATE_AWAITING_RESULT) {
-    // If the esp timed out
-    if (get_timestamp()-startEspWaitTime > 10) {
-      DEBUG_PRINTLN(F("Esp didn't respond in time, resetting"));
-      // This'll start it again
-      esp_reset();
-    // Else if it replied
-    } else if (mcp.digitalRead(MCP_ESP_RESULT_PIN)) {
+    // If it replied
+    if (mcp.digitalRead(MCP_ESP_RESULT_PIN)) {
       espState = ESP_STATE_IDLE;
 
       bool success = mcp.digitalRead(MCP_ESP_SUCCESS_PIN);
@@ -553,12 +549,11 @@ void submit_reading() {
     return;
   }
 
+  printWeatherReading(currentReading);
+  String outputUrl = generate_request_url(currentReading);
+
   espState = ESP_STATE_AWAITING_RESULT;
   startEspWaitTime = get_timestamp();
-
-  printWeatherReading(currentReading);
-
-  String outputUrl = generate_request_url(currentReading);
   send_esp_serial(ESP_MSG_REQUEST, outputUrl.c_str());
   delay(1);
 }
