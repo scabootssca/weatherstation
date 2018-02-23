@@ -347,6 +347,14 @@ void setup() {
 //   DEBUG_PRINTLN(String(data).c_str());
 // }
 
+// void esp_send_debug_request(String message) {
+//   uint16_t debugReadPos = sram_read(SRAM_ADDR_DEBUG_READ_INDEX, SRAM_SIZE_DEBUG_READ_INDEX);
+//   uint16_t debugWritePos = sram_read(SRAM_ADDR_DEBUG_WRITE_INDEX, SRAM_SIZE_DEBUG_WRITE_INDEX);
+//
+//   if (debugReadPos != debugWritePos) {
+//
+//   }
+
 void esp_send_debug_request(String message) {
   espState = ESP_STATE_AWAITING_RESULT;
   startEspWaitTime = get_timestamp();
