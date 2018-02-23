@@ -27,6 +27,8 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define SAMPLES_PER_READING READING_INTERVAL/SAMPLE_INTERVAL
 #define BATTERY_SAMPLE_MODULO 25
 #define MAX_FAILED_SUBMITS 3
+#define ESP_REQUEST_TIMEOUT 30 // In seconds
+
 
 // Wind Vane Calibration
 #define WIND_VANE_MIN 0
@@ -174,6 +176,7 @@ void setup() {
 
   // Esp serial
   ESPSerial.begin(ESP_ATMEGA_BAUD_RATE);
+  ESPSerial.setTimeout(500);
 
   pinMode(ESP_RESET_PIN, INPUT); // Input while were not using it to not interfere with ESP programming
 
@@ -408,13 +411,14 @@ void loop() {
         esp_sleep();
       }
 
-      DEBUG_PRINT(F("Esp sent result: "));
-      DEBUG_PRINTLN(success);
+    // If the esp timed out
+    } else if (get_timestamp()-startEspWaitTime > ESP_REQUEST_TIMEOUT) {
+      DEBUG_PRINTLN("Esp reply timeout.");
+      // This'll start it again
+      esp_reset();
     }
-  }
-
   // ESP_STATE_IDLE, no timeout condition and results waiting for submission
-  if ((espState == ESP_STATE_IDLE) && (submitTimeoutCountdown <= 0) && (weatherReadingReadIndex != weatherReadingWriteIndex)) {
+  } else if ((espState == ESP_STATE_IDLE) && (submitTimeoutCountdown <= 0) && (weatherReadingReadIndex != weatherReadingWriteIndex)) {
     submit_reading();
   }
 
@@ -532,6 +536,8 @@ String generate_request_url(WeatherReading weatherReading) {
 }
 
 void submit_reading() {
+  wdt_reset();
+
   DEBUG_PRINTLN();
   DEBUG_PRINT(F("Submiting Reading: "));
   DEBUG_PRINTLN(weatherReadingReadIndex);
@@ -772,6 +778,8 @@ void read_tph(float *dest) {
 }
 
 void take_sample() {
+  wdt_reset();
+
   #if DEBUG
   digitalWrite(OK_LED_PIN, HIGH);
   DEBUG2_PRINTLN();
