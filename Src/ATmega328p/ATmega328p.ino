@@ -153,7 +153,7 @@ void setup() {
   DEBUG_PRINT(F("\n\nInitilizing"));
 
   for (int i=0; i<10; i++) {
-    DEBUG_PRINT(".");
+    DEBUG_PRINT(F("."));
     delay(5);
   }
 
@@ -230,11 +230,7 @@ void setup() {
 
   // Check to see if the RTC is keeping time.  If it is, load the time from your computer.
   if (CLEAN_START || !RTC.isrunning()) {
-    #if CLEAN_START
     DEBUG_PRINTLN(F("Syncing RTC to compile time (UTC)"));
-    #else
-    DEBUG_PRINTLN(F("RTC is NOT running!"));
-    #endif
 
     // This will reflect the time that your sketch was compiled
     // Sucks cause if it takes forever to upload then its funny
@@ -248,7 +244,7 @@ void setup() {
   sram_init(SRAM_CS_PIN); // Will set pin mode and such
   bool restoredSram = false;
 
-  DEBUG_PRINTLN(F("Attempting to restore from SRAM"));
+  DEBUG_PRINTLN(F("Restore SRAM"));
   delay(1);
 
   // Try and restore from prevuint32_t weatherReadingWriteIndex = 0;
@@ -261,16 +257,16 @@ void setup() {
       weatherReadingWriteIndex = 0;
       weatherReadingReadIndex = 0;
     } else {
-      DEBUG_PRINTLN(F("Ok! Sucessfully restored state from SRAM."));
+      DEBUG_PRINTLN(F("Ok! Restored from SRAM."));
       restoredSram = true;
     }
   }
 
   if (!restoredSram) {
     if (CLEAN_START) {
-      DEBUG_PRINTLN(F("Not restoring from SRAM, CLEAN_START"));
+      DEBUG_PRINTLN(F("No SRAM, CLEAN_START"));
     } else {
-      DEBUG_PRINTLN(F("ERROR: Previous state not found in SRAM, starting fresh."));
+      DEBUG_PRINTLN(F("ERROR: No state in SRAM."));
     }
 
     sram_write(weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
@@ -296,18 +292,20 @@ void setup() {
       bmeSensor.STANDBY_MS_0_5
     );
   } else {
-    DEBUG_PRINTLN(F("BME280 sensor is not detected at i2caddr 0x76; check wiring."));
+    DEBUG_PRINTLN(F("BME280 @ 0x76 not found; check wiring."));
   }
 
   DEBUG_PRINTLN(F("Sending Startup GET"));
 
   String bootMessage = "BOOT,";
 
-  for (int i=0; i<4; i++) {
-    bootMessage += ((mcusrBootValue>>i)&1)?"1":"0";
-  }
+  // lsb first so 0
+  bootMessage += ((mcusrBootValue>>PORF)&1)?"1":"0";
+  bootMessage += ((mcusrBootValue>>EXTRF)&1)?"1":"0";
+  bootMessage += ((mcusrBootValue>>BORF)&1)?"1":"0";
+  bootMessage += ((mcusrBootValue>>WDRF)&1)?"1":"0";
 
-  Serial.print("Bootmsg: ");
+  Serial.print(F("Bootmsg: "));
   Serial.println(bootMessage);
 
   // Wait a bit
@@ -321,7 +319,7 @@ void setup() {
   digitalWrite(OK_LED_PIN, LOW);
   digitalWrite(ERROR_LED_PIN, LOW);
 
-  DEBUG_PRINTLN(F("Finished Initilizing"));
+  DEBUG_PRINTLN(F("Finished Init"));
   DEBUG_PRINTLN();
 }
 //
@@ -364,7 +362,7 @@ void esp_sleep() {
 }
 
 void esp_reset() {
-  DEBUG_PRINTLN(F("Resetting ESP.."));
+  DEBUG_PRINTLN(F("Resetting ESP"));
   pinMode(ESP_RESET_PIN, OUTPUT);
   digitalWrite(ESP_RESET_PIN, LOW);
   delay(20);
@@ -389,7 +387,10 @@ void loop() {
     // Else if it replied
     } else if (mcp.digitalRead(MCP_ESP_RESULT_PIN)) {
       espState = ESP_STATE_IDLE;
+
       bool success = mcp.digitalRead(MCP_ESP_SUCCESS_PIN);
+      DEBUG_PRINT(F("Esp sent result: "));
+      DEBUG_PRINTLN(success);
 
       if (success) {
         failedSubmits = 0;
@@ -397,11 +398,12 @@ void loop() {
       } else {
         failedSubmits++;
 
+        DEBUG_PRINT(F("Failed, Retries Left: "));
+
         if (failedSubmits >= MAX_FAILED_SUBMITS) {
-          DEBUG_PRINTLN(F("Failed - Aborting until next reading (!)"));
+          DEBUG_PRINTLN(F("Aborting (!)"));
           submitTimeoutCountdown = 1;
         } else {
-          DEBUG_PRINT(F("Failed - Retries Left: "));
           DEBUG_PRINTLN(MAX_FAILED_SUBMITS-failedSubmits);
         }
       }
@@ -449,7 +451,7 @@ void loop() {
     Serial.println();
     Serial.print(F("--(WEATHER READING ("));
     Serial.print(weatherReadingWriteIndex);
-    Serial.println(F("))--"));
+    Serial.println("))--");
     printWeatherReading(currentReading);
     Serial.println();
     #endif
@@ -546,7 +548,7 @@ void submit_reading() {
   sram_read_reading(&currentReading, weatherReadingReadIndex);
 
   if (currentReading.timestamp > get_timestamp()) {
-    DEBUG_PRINTLN(F("Corrupted reading: Future timestamp, Skipping."));
+    DEBUG_PRINTLN(F("Corrupt reading: Future timestamp, Skipping."));
     advance_read_pointer();
     return;
   }
@@ -604,19 +606,19 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
   float pinMv = (vccMv / 1023.0) * channelPinReading;
 	float readingMv = pinMv * ratio;
 
-	DEBUG2_PRINT("ADC channel: ");
+	DEBUG2_PRINT(F("ADC channel: "));
 	DEBUG2_PRINT(channel);
-	DEBUG2_PRINT(" refPin: ");
+	DEBUG2_PRINT(F(" refPin: "));
 	DEBUG2_PRINT(refPinReading);
-  DEBUG2_PRINT(" channelPin: ");
+  DEBUG2_PRINT(F(" channelPin: "));
   DEBUG2_PRINT(channelPinReading);
-	DEBUG2_PRINT(" vccMv: ");
+	DEBUG2_PRINT(F(" vccMv: "));
 	DEBUG2_PRINT(vccMv);
-	DEBUG2_PRINT(" pinMv: ");
+	DEBUG2_PRINT(F(" pinMv: "));
 	DEBUG2_PRINT(pinMv);
-  DEBUG2_PRINT(" readingMv: ");
+  DEBUG2_PRINT(F(" readingMv: "));
   DEBUG2_PRINT(readingMv);
-	DEBUG2_PRINT(" resultMv: ");
+	DEBUG2_PRINT(F(" resultMv: "));
 	DEBUG2_PRINTLN(readingMv+offset);
 
   return readingMv + offset;
@@ -648,7 +650,7 @@ bool recv_esp_serial() {
 			ESPNewline = false;
 
 			if (!ESPReplyBuffering) {
-				DEBUG_PRINT("ESP (recv)");
+				DEBUG_PRINT(F("ESP (recv)"));
 			}
 		}
 
@@ -679,7 +681,7 @@ float read_anemometer() {
   anemometerPulses = 0;
   sei();
 
-  DEBUG3_PRINT("Num anemometer pulses: ");
+  DEBUG3_PRINT(F("Num wind pulses: "));
   DEBUG3_PRINTLN(numTimelyPulses);
 
   float anemometerMph = (numTimelyPulses * 0.5) * (60000.0 / (currentReadingMillis-lastAnemometerReadingMillis)) * ANEMOMETER_CALIBRATION_COEF;
@@ -734,10 +736,6 @@ float read_battery_voltage(int oversampleBits=3) {
 
   // Turn the solar panel back on
   mcp.digitalWrite(MCP_SOLAR_ENABLE_PIN, HIGH);
-
-  // Output
-  DEBUG2_PRINT("Battery Voltage: ");
-  DEBUG2_PRINTLN(batteryVoltage);
 
   return batteryVoltage;
 }
