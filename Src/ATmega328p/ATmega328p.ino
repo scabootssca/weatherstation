@@ -518,7 +518,7 @@ String generate_request_url(WeatherReading weatherReading) {
 	}
 
   outputUrl += "&bat=";
-  outputUrl += weatherReading.battery;
+  outputUrl += weatherReading.batteryMv;
   outputUrl += "&windSpeed=";
   outputUrl += weatherReading.windSpeed;
   outputUrl += "&windDirection=";
