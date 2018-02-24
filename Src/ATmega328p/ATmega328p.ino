@@ -100,8 +100,8 @@ unsigned long lastRainBucketReadingMillis = 0;
 
 WeatherReadingAccumulator sampleAccumulator;
 
-uint8_t weatherReadingWriteIndex = 0;
-uint8_t weatherReadingReadIndex = 0;
+uint16_t weatherReadingWriteIndex = 0;
+uint16_t weatherReadingReadIndex = 0;
 
 #define ESP_STATE_SLEEP 0
 #define ESP_STATE_IDLE 1

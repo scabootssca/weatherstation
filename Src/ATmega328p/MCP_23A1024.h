@@ -11,11 +11,13 @@
 * SRAM memory layout
 ***************************/
 /*
+[0-4]  BLANK
 [5-9]    populated
-[10-14]  readIndex
-[20-24]  writeIndex
-[25-31]  BLANK
-[128-endAccum] readingAccumulator
+[10-12]  readIndex
+[13-19]  BLANK
+[20-22]  writeIndex
+[23-31]  BLANK
+[32-endAccum] readingAccumulator
 [endAccum+]   readings
 */
 #define SRAM_POPULATED_KEY 0xFAD00BA6
@@ -26,9 +28,9 @@
 
 // Reading Buffer Pointers
 #define SRAM_ADDR_READINGS_READ_INDEX 10
-#define SRAM_SIZE_READINGS_READ_INDEX 1
+#define SRAM_SIZE_READINGS_READ_INDEX 2
 #define SRAM_ADDR_READINGS_WRITE_INDEX 20
-#define SRAM_SIZE_READINGS_WRITE_INDEX 1
+#define SRAM_SIZE_READINGS_WRITE_INDEX 2
 
 // Ongoing accumulator
 #define SRAM_ADDR_ACCUMULATOR 32
@@ -340,13 +342,13 @@ void sram_write_reading(WeatherReading *weatherReading, uint32_t readingIndex) {
   sram_end_transaction();
 }
 
-void sram_read(uint8_t *dest, uint32_t address, unsigned int size) {
+void sram_read(uint16_t *dest, uint32_t address, unsigned int size) {
   sram_begin_transaction(SRAM_MODE_READ, address, size);
-  *dest = sram_transfer(uint8_t(0));
+  *dest = sram_transfer(uint16_t(0));
   sram_end_transaction();
 }
 
-void sram_write(uint8_t value, uint32_t address, unsigned int size) {
+void sram_write(uint16_t value, uint32_t address, unsigned int size) {
   sram_begin_transaction(SRAM_MODE_WRITE, address, size);
   sram_transfer(value);
   sram_end_transaction();
