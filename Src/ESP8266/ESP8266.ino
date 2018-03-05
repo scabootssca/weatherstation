@@ -5,11 +5,11 @@
 #include "config.h"
 #include "helpers.h"
 
-#define RESULT_PIN D6
-#define SUCCESS_PIN D5
+#define SUCCESS_PIN D1
+#define RESULT_PIN D2
 
-#define ATMEGA_RX_PIN D1
-#define ATMEGA_TX_PIN D2
+#define ATMEGA_RX_PIN D5
+#define ATMEGA_TX_PIN D6
 
 SoftwareSerial ATmegaSerial(ATMEGA_RX_PIN, ATMEGA_TX_PIN);
 
