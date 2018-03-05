@@ -8,6 +8,7 @@ struct WeatherReading {
 	float humidity = 0;
 	float pressure = 0;
 	float batteryMv = 0;
+	float windGust = 0;
 	float windSpeed = 0;
 	float windDirection = 0;
 	float lux = 0;
@@ -23,6 +24,7 @@ struct WeatherReadingAccumulator {
 	uint64_t pressure = 0;
 
 	uint32_t batteryMv = 0;
+	uint32_t windGust = 0;
 	uint32_t windSpeed = 0;
 	float windDirectionX = 0;
 	float windDirectionY = 0;
@@ -40,6 +42,7 @@ void zeroWeatherReading(WeatherReading *reading) {
 	reading->humidity = 0;
 	reading->pressure = 0;
 	reading->batteryMv = 0;
+	reading->windGust = 0;
 	reading->windSpeed = 0;
 	reading->windDirection = 0;
 	reading->rain = 0;
@@ -52,6 +55,7 @@ void zeroWeatherReading(WeatherReadingAccumulator *reading) {
 	reading->humidity = 0;
 	reading->pressure = 0;
 	reading->batteryMv = 0;
+	reading->windGust = 0;
 	reading->windSpeed = 0;
 	reading->windDirectionX = 0;
 	reading->windDirectionY = 0;
@@ -67,6 +71,8 @@ void store_accumulator(WeatherReading *dest, WeatherReadingAccumulator src) {
 	dest->humidity = (src.humidity/float(src.numSamples))*.01;
 	dest->pressure = (src.pressure/float(src.numSamples))*.01;
 	dest->batteryMv = (src.batteryMv/float(src.numBatterySamples))*.01;
+
+	dest->windGust = float(src.windGust)*.01; // This is direct except for making a float
 	dest->windSpeed = (src.windSpeed/float(src.numSamples))*.01;
 
 	// Do the average of the X,Y cartesian wind coordinates
@@ -140,6 +146,8 @@ void printWeatherReading(WeatherReading reading) {
 	Serial.print("Battery: ");
 	Serial.print(reading.batteryMv);
 	Serial.println("mV");
+	Serial.print("Wind Gust: ");
+	Serial.println(reading.windGust);
 	Serial.print("Wind Speed: ");
 	Serial.print(reading.windSpeed);
 	Serial.println("mph");

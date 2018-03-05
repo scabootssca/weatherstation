@@ -231,6 +231,7 @@ void sram_read_accumulator(WeatherReadingAccumulator *sampleAccumulator) {
   sampleAccumulator->humidity = sram_transfer(uint32_t(0));
   sampleAccumulator->pressure = sram_transfer(uint64_t(0));
   sampleAccumulator->batteryMv = sram_transfer(uint32_t(0));
+  sampleAccumulator->windGust = sram_transfer(uint32_t(0));
   sampleAccumulator->windSpeed = sram_transfer(uint32_t(0));
   sampleAccumulator->windDirectionX = uint32_to_float(sram_transfer(uint32_t(0)));
   sampleAccumulator->windDirectionY = uint32_to_float(sram_transfer(uint32_t(0)));
@@ -251,6 +252,7 @@ void sram_write_accumulator(WeatherReadingAccumulator *sampleAccumulator) {
   sram_transfer(sampleAccumulator->humidity);
   sram_transfer(sampleAccumulator->pressure);
   sram_transfer(sampleAccumulator->batteryMv);
+  sram_transfer(sampleAccumulator->windGust);
   sram_transfer(sampleAccumulator->windSpeed);
   sram_transfer(float_to_uint32(sampleAccumulator->windDirectionX));
   sram_transfer(float_to_uint32(sampleAccumulator->windDirectionY));
@@ -313,6 +315,7 @@ void sram_read_reading(WeatherReading *weatherReading, uint32_t readingIndex) {
   weatherReading->humidity = uint32_to_float(sram_transfer(uint32_t(0)));
   weatherReading->pressure = uint32_to_float(sram_transfer(uint32_t(0)));
   weatherReading->batteryMv = uint32_to_float(sram_transfer(uint32_t(0)));
+  weatherReading->windGust = uint32_to_float(sram_transfer(uint32_t(0)));
   weatherReading->windSpeed = uint32_to_float(sram_transfer(uint32_t(0)));
   weatherReading->windDirection = uint32_to_float(sram_transfer(uint32_t(0)));
   weatherReading->rain = sram_transfer(uint32_t(0));
@@ -334,6 +337,7 @@ void sram_write_reading(WeatherReading *weatherReading, uint32_t readingIndex) {
   sram_transfer(float_to_uint32(weatherReading->humidity));
   sram_transfer(float_to_uint32(weatherReading->pressure));
   sram_transfer(float_to_uint32(weatherReading->batteryMv));
+  sram_transfer(float_to_uint32(weatherReading->windGust));
   sram_transfer(float_to_uint32(weatherReading->windSpeed));
   sram_transfer(float_to_uint32(weatherReading->windDirection));
   sram_transfer(weatherReading->rain);
