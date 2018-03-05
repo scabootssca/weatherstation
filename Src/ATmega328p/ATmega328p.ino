@@ -916,13 +916,16 @@ void take_sample() {
   read_anemometer_gust();
   read_wind_vane(&sampleAccumulator.windDirectionX, &sampleAccumulator.windDirectionY);
 
+  // Rain
   sampleAccumulator.rain += read_rain();
 
+  // Battery
   if (sampleAccumulator.numSamples%BATTERY_SAMPLE_MODULO == 0){
     sampleAccumulator.batteryMv += int32_t(read_battery_voltage()*100);
     sampleAccumulator.numBatterySamples++;
   }
 
+  // Humidity, Temperature, Pressure
   float bmeReadings[3];
   read_tph(bmeReadings);
 
@@ -930,6 +933,7 @@ void take_sample() {
   sampleAccumulator.pressure += int32_t(bmeReadings[1]*100);
   sampleAccumulator.humidity += int32_t(bmeReadings[2]*100);
 
+  // Lux
   sampleAccumulator.lux += read_lux();
 
   sampleAccumulator.numSamples++;
