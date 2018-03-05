@@ -109,7 +109,7 @@ uint16_t weatherReadingReadIndex = 0;
 #define ESP_STATE_SLEEP 0
 #define ESP_STATE_IDLE 1
 #define ESP_STATE_AWAITING_RESULT 2
-#define ESP_STATE_WAKING 3
+#define ESP_STATE_RESETTING 3
 
 unsigned short espState = ESP_STATE_SLEEP;
 
@@ -415,7 +415,10 @@ void esp_sleep() {
 
 void esp_reset() {
   DEBUG_PRINTLN(F("Resetting ESP"));
+  espState = ESP_STATE_RESETTING;
+
   pinMode(ESP_RESET_PIN, OUTPUT);
+
   digitalWrite(ESP_RESET_PIN, LOW);
   delay(20);
   digitalWrite(ESP_RESET_PIN, HIGH);
@@ -423,7 +426,8 @@ void esp_reset() {
   digitalWrite(ESP_RESET_PIN, LOW);
   pinMode(ESP_RESET_PIN, INPUT);
   delay(10);
-  espState = ESP_STATE_IDLE;
+
+  //espState = ESP_STATE_IDLE;
 }
 
 void loop() {
@@ -470,6 +474,15 @@ void loop() {
   // ESP_STATE_IDLE, no timeout condition and results waiting for submission
   } else if ((espState == ESP_STATE_IDLE) && (submitTimeoutCountdown <= 0) && (weatherReadingReadIndex != weatherReadingWriteIndex)) {
     submit_reading();
+  }
+
+  // If it was resetting and it's now pulled the pins low signifying it's awake
+  if (espState == ESP_STATE_RESETTING) {
+    // If they're low
+    if (mcp.digitalRead(MCP_ESP_RESULT_PIN) == 0 && mcp.digitalRead(MCP_ESP_SUCCESS_PIN) == 0) {
+      // Idle now, on next loop we can send it a command
+      espState = ESP_STATE_IDLE;
+    }
   }
 
   // Time to sample
@@ -688,11 +701,6 @@ void send_esp_serial(char messageType, const char *value) {
 bool recv_esp_serial() {
 	// Print ESP serial messages
 	if (ESPSerial.available() > 0) {
-    // If we're waiting to see if it's alive
-    if (espState == ESP_STATE_WAKING) {
-      espState = ESP_STATE_IDLE;
-    }
-
 		uint8_t rxByte = ESPSerial.read();
 
 		if (ESPNewline) {
