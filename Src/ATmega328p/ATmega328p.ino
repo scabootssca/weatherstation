@@ -39,7 +39,8 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 
 // Anemometer Calibration (Linear Association)
 // rpm/coef = wind speed in mph
-#define ANEMOMETER_CALIBRATION_COEF 0.09739260404185239 // 10.2677201193868 = samples per 1mph
+#define ANEMOMETER_CALIBRATION_COEF 0.09739260404185239 // 10.2677201193868 = revolutions per 1mph
+#define ANEMOMETER_TDELTA_1_MPH 2921.778121255 // (60/10.2677201193868)*0.5 = Tdelta in samples per 1mph (For millis) 2 samples per revolution
 
 // Pins
 #define OK_LED_PIN 9     // PB1
@@ -92,8 +93,10 @@ bool bmeConnected = false;
 
 unsigned long lastSampleMillis = 0;
 
+volatile unsigned long lastAnemometerPulseMillis = 0;
 volatile unsigned int anemometerPulses = 0;
-unsigned long lastAnemometerReadingMillis = 0;
+volatile uint64_t anemometerTDeltaAccumulator = 0;
+volatile unsigned long anemometerMinTDelta = ULONG_MAX;
 
 volatile unsigned int rainBucketPulses = 0;
 unsigned long lastRainBucketReadingMillis = 0;
@@ -128,7 +131,48 @@ char ESPReplyBuffer[11]; // 1 + 4 + 1 + 4 + 1 == (~ Int1 ! Int2 \n)
 short ESPReplyBufferIndex = 0;
 bool ESPReplyBuffering = false;
 
+// void anemometerISR() {
+//   anemometerPulses++;
+// }
+
 void anemometerISR() {
+  // If we've no pulses prior then count this and return
+  if (lastAnemometerPulseMillis == 0) {
+    //Serial.print("First: ");
+    //Serial.println(millis());    lastAnemometerPulseMillis = millis();
+    lastAnemometerPulseMillis = millis();
+    return;
+  }
+
+  unsigned long tDelta = 0;
+
+  // We rolled over
+  if (millis() < lastAnemometerPulseMillis) {
+    tDelta = (ULONG_MAX-lastAnemometerPulseMillis)+millis();
+  } else {
+    // Get the tdelta and use it to store the average
+    tDelta = millis()-lastAnemometerPulseMillis;
+  }
+
+  // 50ms debounce
+  // Means ~58.4 MPH is the highest we can measure with this
+  if (tDelta < 50) {
+    return;
+  }
+
+  //Serial.print("tDelta: ");
+  //Serial.println(tDelta);
+
+  // Add the delta to the accumulator
+  anemometerTDeltaAccumulator += tDelta;
+
+  // For peak instant gust
+  if (tDelta < anemometerMinTDelta) {
+    anemometerMinTDelta = tDelta;
+  }
+
+  // Save this time
+  lastAnemometerPulseMillis = millis();
   anemometerPulses++;
 }
 
@@ -523,6 +567,8 @@ String generate_request_url(WeatherReading weatherReading) {
 
   outputUrl += "&bat=";
   outputUrl += weatherReading.batteryMv;
+  outputUrl += "&windGust=";
+  outputUrl += weatherReading.windGust;
   outputUrl += "&windSpeed=";
   outputUrl += weatherReading.windSpeed;
   outputUrl += "&windDirection=";
@@ -676,23 +722,78 @@ bool recv_esp_serial() {
 	}
 }
 
-float read_anemometer() {
-  unsigned long currentReadingMillis = millis();
+void read_anemometer() {
+  // No wind
+  if (anemometerPulses == 0) {
+    // DEBUG_PRINTLN(F("Avg Wind Tdelta: 0"));
+    // DEBUG_PRINTLN(F("Wind MPH: 0"));
+    return;
+  }
 
   cli();
-  int numTimelyPulses = anemometerPulses;
+  // Get the average Tdelta for the anemometer since our last sample
+  float averagePulseTDelta = anemometerTDeltaAccumulator / float(anemometerPulses);
   anemometerPulses = 0;
+  anemometerTDeltaAccumulator = 0;
   sei();
 
-  DEBUG3_PRINT(F("Num wind pulses: "));
-  DEBUG3_PRINTLN(numTimelyPulses);
+  // DEBUG_PRINT(F("Avg Wind Tdelta: "));
+  // DEBUG_PRINTLN(averagePulseTDelta);
 
-  float anemometerMph = (numTimelyPulses * 0.5) * (60000.0 / (currentReadingMillis-lastAnemometerReadingMillis)) * ANEMOMETER_CALIBRATION_COEF;
+  float anemometerMph = ANEMOMETER_TDELTA_1_MPH / averagePulseTDelta;
 
-  lastAnemometerReadingMillis = currentReadingMillis;
+  // DEBUG_PRINT(F("Wind MPH: "));
+  // DEBUG_PRINTLN(anemometerMph);
 
-  return anemometerMph;
+  sampleAccumulator.windSpeed += int32_t(anemometerMph*100);
+
+  // DEBUG_PRINT(F("Wind Accumulator: "));
+  // DEBUG_PRINTLN(sampleAccumulator.windSpeed);
+  // DEBUG_PRINT(F("AccumAvg: "));
+  // DEBUG_PRINTLN(float(sampleAccumulator.windSpeed/sampleAccumulator.numSamples)*.01);
 }
+
+void read_anemometer_gust() {
+  // No wind
+  if (anemometerMinTDelta == ULONG_MAX) {
+    return;
+  }
+
+  cli();
+  float anemometerGustMph = ANEMOMETER_TDELTA_1_MPH / anemometerMinTDelta;
+  anemometerMinTDelta = ULONG_MAX;
+  sei();
+
+  // DEBUG_PRINT(F("Sample Gust MPH: "));
+  // DEBUG_PRINTLN(anemometerGustMph);
+
+  int32_t gustInt32 = int32_t(anemometerGustMph*100);
+
+  if (gustInt32 > sampleAccumulator.windGust) {
+    sampleAccumulator.windGust = gustInt32;
+
+    // DEBUG_PRINT(F("NEW GUST RECORD: "));
+    // DEBUG_PRINTLN(anemometerGustMph);
+  }
+}
+
+// float read_anemometer() {
+//   unsigned long currentReadingMillis = millis();
+//
+//   cli();
+//   int numTimelyPulses = anemometerPulses;
+//   anemometerPulses = 0;
+//   sei();
+//
+//   DEBUG3_PRINT(F("Num wind pulses: "));
+//   DEBUG3_PRINTLN(numTimelyPulses);
+//
+//   float anemometerMph = (numTimelyPulses * 0.5) * (60000.0 / (currentReadingMillis-lastAnemometerReadingMillis)) * ANEMOMETER_CALIBRATION_COEF;
+//
+//   lastAnemometerReadingMillis = currentReadingMillis;
+//
+//   return anemometerMph;
+// }
 
 int read_rain() {
   rainBucketPulses = 0;
@@ -810,7 +911,9 @@ void take_sample() {
 
   sampleAccumulator.timestamp = get_timestamp();
 
-  sampleAccumulator.windSpeed += int32_t(read_anemometer()*100);
+  // Wind
+  read_anemometer();
+  read_anemometer_gust();
   read_wind_vane(&sampleAccumulator.windDirectionX, &sampleAccumulator.windDirectionY);
 
   sampleAccumulator.rain += read_rain();
