@@ -24,13 +24,13 @@
 
 // Hopefully it won't randomly be this
 #define SRAM_ADDR_POPULATED 5
-#define SRAM_SIZE_POPULATED 4
+#define SRAM_SIZE_POPULATED sizeof(SRAM_POPULATED_KEY)
 
 // Reading Buffer Pointers
 #define SRAM_ADDR_READINGS_READ_INDEX 10
-#define SRAM_SIZE_READINGS_READ_INDEX 2
+#define SRAM_SIZE_READINGS_READ_INDEX sizeof(int)
 #define SRAM_ADDR_READINGS_WRITE_INDEX 20
-#define SRAM_SIZE_READINGS_WRITE_INDEX 2
+#define SRAM_SIZE_READINGS_WRITE_INDEX sizeof(int)
 
 // Ongoing accumulator
 #define SRAM_ADDR_ACCUMULATOR 32
@@ -265,7 +265,7 @@ void sram_write_accumulator(WeatherReadingAccumulator *sampleAccumulator) {
   sram_end_transaction();
 }
 
-bool sram_restore(WeatherReadingAccumulator *sampleAccumulator) {
+bool sram_get_populated() {
   // See if the populated key was set
   sram_begin_transaction(SRAM_MODE_READ, SRAM_ADDR_POPULATED, SRAM_SIZE_POPULATED);
   uint32_t storedValue = sram_transfer(uint32_t(0));
@@ -288,18 +288,7 @@ bool sram_restore(WeatherReadingAccumulator *sampleAccumulator) {
   sram_transfer(uint32_t(SRAM_POPULATED_KEY));
   sram_end_transaction();
 
-  // Read the accumulator here
-  if (previouslyPopulated) {
-    sram_read_accumulator(sampleAccumulator);
-
-    Serial.println("Restored Accumulator: ");
-    printWeatherReading(*sampleAccumulator);
-
-  } else {
-    sram_write_accumulator(sampleAccumulator);
-  }
-
-  return previouslyPopulated ;
+  return previouslyPopulated;
 }
 
 void sram_read_reading(WeatherReading *weatherReading, uint32_t readingIndex) {
