@@ -414,6 +414,8 @@ void esp_sleep() {
 }
 
 void esp_reset() {
+  wdt_reset();
+
   DEBUG_PRINTLN(F("Resetting ESP"));
   espState = ESP_STATE_RESETTING;
 
@@ -424,6 +426,7 @@ void esp_reset() {
   digitalWrite(ESP_RESET_PIN, HIGH);
   delay(20);
   digitalWrite(ESP_RESET_PIN, LOW);
+  delay(1);
   pinMode(ESP_RESET_PIN, INPUT);
   delay(10);
 
@@ -433,6 +436,7 @@ void esp_reset() {
 void loop() {
   wdt_reset();
   recv_esp_serial();
+  wdt_reset();
 
   // If we're waiting for the esp to send the result of a http request
   if (espState == ESP_STATE_AWAITING_RESULT) {
@@ -458,6 +462,8 @@ void loop() {
         } else {
           DEBUG_PRINTLN(MAX_FAILED_SUBMITS-failedSubmits);
         }
+
+        wdt_reset();
       }
 
       // If we've submitted all or too many fails then put it back to sleep
