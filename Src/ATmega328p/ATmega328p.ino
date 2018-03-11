@@ -70,8 +70,9 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 #define MCP_BAT_DIV_ENABLE_PIN 7
 
 // Includes
-#include <avr/wdt.h>
+#include <limits.h>
 #include <Wire.h>
+//#include "I2C.h"
 #include <SPI.h>
 #include <SoftwareSerial.h>
 #include <math.h>
@@ -193,6 +194,7 @@ void setup() {
 
   // Serial
   Serial.begin(19200);
+  Serial.setTimeout(500);
 
   DEBUG_PRINT(F("\n\nInitilizing"));
 
@@ -215,8 +217,6 @@ void setup() {
   DEBUG_PRINTLN((mcusrBootValue>>EXTRF)&1);
   DEBUG_PRINT(F("PORF: "));
   DEBUG_PRINTLN((mcusrBootValue>>PORF)&1);
-  DEBUG_PRINT(F("Watchdog Status: "));
-  DEBUG_PRINTLN(WDTCSR, BIN);
 
   // Esp serial
   ESPSerial.begin(ESP_ATMEGA_BAUD_RATE);
@@ -234,7 +234,7 @@ void setup() {
   pinMode(BAT_ADC_PIN, INPUT);
 
   // Inter-Chip interfaces
-  Wire.begin();
+  //Wire.begin();
   SPI.begin();
   //TWBR = 72;  // 50 kHz at 8 MHz clock
 
@@ -285,27 +285,33 @@ void setup() {
   bootTime = RTC.now().unixtime();
 
   // SRAM init
+  DEBUG_PRINTLN(F("Start SRAM"));
   sram_init(SRAM_CS_PIN); // Will set pin mode and such
-  bool restoredSram = false;
-
-  DEBUG_PRINTLN(F("Restore SRAM"));
   delay(1);
 
-  // Try and restore from prevuint32_t weatherReadingWriteIndex = 0;
-  if (CLEAN_START == 0 && sram_restore(&sampleAccumulator)) {
+  bool restoredSram = false;
+
+  // Try and restore from previous if we're not forced to not
+  if (CLEAN_START == 0 && sram_get_populated()) {
+    delay(1);
+
+    // Restore the reading indexes and accumulator
     sram_read(&weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
     sram_read(&weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
+    sram_read_accumulator(&sampleAccumulator);
 
-    if (weatherReadingWriteIndex > SRAM_MAX_READINGS || weatherReadingReadIndex > SRAM_MAX_READINGS) {
+    if (
+        weatherReadingWriteIndex > SRAM_MAX_READINGS ||
+        weatherReadingReadIndex > SRAM_MAX_READINGS ||
+        sampleAccumulator.timestamp == 0) {
       DEBUG_PRINTLN(F("ERROR: Sram Corrupted"));
-      weatherReadingWriteIndex = 0;
-      weatherReadingReadIndex = 0;
     } else {
       DEBUG_PRINTLN(F("Ok! Restored from SRAM."));
       restoredSram = true;
     }
   }
 
+  //  If we didn't restore it
   if (!restoredSram) {
     if (CLEAN_START) {
       DEBUG_PRINTLN(F("No SRAM, CLEAN_START"));
@@ -315,12 +321,17 @@ void setup() {
 
     sram_write(weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
     sram_write(weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
+
+    zeroWeatherReading(&sampleAccumulator);
+    sram_write_accumulator(&sampleAccumulator);
   }
 
   DEBUG_PRINT(F("Reading Read Index: "));
   DEBUG_PRINTLN(weatherReadingReadIndex);
   DEBUG_PRINT(F("Reading Write Index: "));
   DEBUG_PRINTLN(weatherReadingWriteIndex);
+  Serial.println("Accumulator: ");
+  printWeatherReading(sampleAccumulator);
 
   // BME280
   bmeConnected = bmeSensor.begin(0x76);
@@ -426,16 +437,12 @@ void esp_reset() {
   digitalWrite(ESP_RESET_PIN, HIGH);
   delay(20);
   digitalWrite(ESP_RESET_PIN, LOW);
-  delay(1);
-  pinMode(ESP_RESET_PIN, INPUT);
-  delay(10);
+  delay(20);
 
-  //espState = ESP_STATE_IDLE;
+  pinMode(ESP_RESET_PIN, INPUT);
 }
 
 void loop() {
-  wdt_reset();
-  recv_esp_serial();
   wdt_reset();
 
   // If we're waiting for the esp to send the result of a http request
@@ -455,12 +462,11 @@ void loop() {
         failedSubmits++;
 
         DEBUG_PRINT(F("Failed, Retries Left: "));
+        DEBUG_PRINTLN(MAX_FAILED_SUBMITS-failedSubmits);
 
         if (failedSubmits >= MAX_FAILED_SUBMITS) {
           DEBUG_PRINTLN(F("Aborting (!)"));
           submitTimeoutCountdown = 1;
-        } else {
-          DEBUG_PRINTLN(MAX_FAILED_SUBMITS-failedSubmits);
         }
 
         wdt_reset();
@@ -477,17 +483,17 @@ void loop() {
       // This'll start it again
       esp_reset();
     }
-  // ESP_STATE_IDLE, no timeout condition and results waiting for submission
-  } else if ((espState == ESP_STATE_IDLE) && (submitTimeoutCountdown <= 0) && (weatherReadingReadIndex != weatherReadingWriteIndex)) {
-    submit_reading();
-  }
-
   // If it was resetting and it's now pulled the pins low signifying it's awake
-  if (espState == ESP_STATE_RESETTING) {
-    // If they're low
-    if (mcp.digitalRead(MCP_ESP_RESULT_PIN) == 0 && mcp.digitalRead(MCP_ESP_SUCCESS_PIN) == 0) {
-      // Idle now, on next loop we can send it a command
-      espState = ESP_STATE_IDLE;
+  } else if (espState == ESP_STATE_RESETTING) {
+      // If they're low
+      if (mcp.digitalRead(MCP_ESP_RESULT_PIN) == 0 && mcp.digitalRead(MCP_ESP_SUCCESS_PIN) == 0) {
+        // Idle now, on next loop we can send it a command
+        espState = ESP_STATE_IDLE;
+      }
+  // ESP_STATE_IDLE, no timeout condition and results waiting for submission
+  } else if (espState == ESP_STATE_IDLE) {
+    if (submitTimeoutCountdown <= 0 && weatherReadingReadIndex != weatherReadingWriteIndex) {
+      submit_reading();
     }
   }
 
@@ -534,6 +540,10 @@ void loop() {
 
     if (submitTimeoutCountdown > 0) {
       submitTimeoutCountdown--;
+
+      if (submitTimeoutCountdown == 0) {
+        failedSubmits = 0;
+      }
     }
   }
 }
@@ -616,8 +626,10 @@ void submit_reading() {
   WeatherReading currentReading;
   sram_read_reading(&currentReading, weatherReadingReadIndex);
 
-  if (currentReading.timestamp > get_timestamp()) {
-    DEBUG_PRINTLN(F("Corrupt reading: Future timestamp, Skipping."));
+  // Maybe have this count and keep skip it if the read fails a few times?
+  //possibly a crc or something?
+  if (currentReading.timestamp == 0 || currentReading.timestamp > get_timestamp()) {
+    DEBUG_PRINTLN(F("Corrupt reading: Skipping."));
     advance_read_pointer();
     return;
   }
@@ -628,10 +640,14 @@ void submit_reading() {
   espState = ESP_STATE_AWAITING_RESULT;
   startEspWaitTime = get_timestamp();
   send_esp_serial(ESP_MSG_REQUEST, outputUrl.c_str());
-  delay(1);
 }
 
-float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampleBits=1) {
+float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampleBits=0) {
+  wdt_reset();
+
+  DEBUG2_PRINT(F("ADC channel: "));
+  DEBUG2_PRINT(channel);
+
   // Oversample for 10 -> 10+oversampleBits bit adc resolution
   // 4^additionalBits
   int numSamples = (int)pow(4.0, oversampleBits);
@@ -648,6 +664,7 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
 
 	// Select what we want
 	analogRead(REF_ADC_PIN);
+  delay(5);
 
 	for (int i=0; i<numSamples; i++) {
 		refPinReading += analogRead(REF_ADC_PIN);
@@ -656,6 +673,9 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
 
 	refPinReading /= numSamples;
 
+  DEBUG2_PRINT(F(" refPin: "));
+  DEBUG2_PRINT(refPinReading);
+
 	mcp.digitalWrite(MCP_REFV_ENABLE_PIN, HIGH);
 
 	float vccMv = ( referencePinMv / refPinReading ) * 1023;
@@ -663,6 +683,7 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
 	// Get the channel mV
 	//////////////////////////////
 	analogRead(channel);
+  delay(5);
 
 	for (int i=0; i<numSamples; i++) {
 		channelPinReading += analogRead(channel);
@@ -671,15 +692,12 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
 
 	channelPinReading /= numSamples;
 
+  DEBUG2_PRINT(F(" channelPin: "));
+  DEBUG2_PRINT(channelPinReading);
+
   float pinMv = (vccMv / 1023.0) * channelPinReading;
 	float readingMv = pinMv * ratio;
 
-	DEBUG2_PRINT(F("ADC channel: "));
-	DEBUG2_PRINT(channel);
-	DEBUG2_PRINT(F(" refPin: "));
-	DEBUG2_PRINT(refPinReading);
-  DEBUG2_PRINT(F(" channelPin: "));
-  DEBUG2_PRINT(channelPinReading);
 	DEBUG2_PRINT(F(" vccMv: "));
 	DEBUG2_PRINT(vccMv);
 	DEBUG2_PRINT(F(" pinMv: "));
@@ -693,48 +711,51 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
 }
 
 void send_esp_serial(char messageType, const char *value) {
-  DEBUG_PRINT(F("ESP (sent)"));
+  wdt_reset();
+
+  DEBUG_PRINT(F("(ATMega->ESP)"));
   DEBUG_PRINT((int)messageType);
   DEBUG_PRINT((int)strlen(value));
   DEBUG_PRINT(value);
-  DEBUG_PRINTLN();
 
-  ESPSerial.write(messageType);
-  ESPSerial.write((char)strlen(value));
-  ESPSerial.write(value);
+  ESPSerial.print(messageType);
+  ESPSerial.print((char)strlen(value));
+  ESPSerial.print(value);
+
+  DEBUG_PRINT(" (done)");
 }
 
-bool recv_esp_serial() {
-	// Print ESP serial messages
-	if (ESPSerial.available() > 0) {
-		uint8_t rxByte = ESPSerial.read();
-
-		if (ESPNewline) {
-			ESPNewline = false;
-
-			if (!ESPReplyBuffering) {
-				DEBUG_PRINT(F("ESP (recv)"));
-			}
-		}
-
-		// Print it if it's not a reply to us (Just it trying to print something)
-		if (!ESPReplyBuffering && rxByte) {
-			Serial.print((char)rxByte);
-		}
-
-		if (rxByte == 126) {
-			ESPReplyBufferIndex = 0;
-			ESPReplyBuffering = true;
-		} else if (rxByte == 10) {
-			ESPNewline = true;
-			ESPReplyBuffering = false;
-		}
-
-		if (ESPReplyBuffering && ESPReplyBufferIndex < 5) {
-			ESPReplyBuffer[ESPReplyBufferIndex++] = rxByte;
-		}
-	}
-}
+// bool recv_esp_serial() {
+// 	// Print ESP serial messages
+// 	if (ESPSerial.available() > 0) {
+// 		uint8_t rxByte = ESPSerial.read();
+//
+// 		if (ESPNewline) {
+// 			ESPNewline = false;
+//
+// 			// if (!ESPReplyBuffering) {
+// 			// 	DEBUG_PRINT(F("ESP (recv)"));
+// 			// }
+// 		}
+//
+// 		// // Print it if it's not a reply to us (Just it trying to print something)
+// 		// if (!ESPReplyBuffering && rxByte) {
+// 		// 	Serial.print((char)rxByte);
+// 		// }
+//
+// 		if (rxByte == 126) {
+// 			ESPReplyBufferIndex = 0;
+// 			ESPReplyBuffering = true;
+// 		} else if (rxByte == 10) {
+// 			ESPNewline = true;
+// 			ESPReplyBuffering = false;
+// 		}
+//
+// 		if (ESPReplyBuffering && ESPReplyBufferIndex < 5) {
+// 			ESPReplyBuffer[ESPReplyBufferIndex++] = rxByte;
+// 		}
+// 	}
+// }
 
 void read_anemometer() {
   // No wind
@@ -832,7 +853,10 @@ void read_wind_vane(float *destX, float *destY) {
   // DEBUG3_PRINTLN(windDegrees);
 }
 
-float read_battery_voltage(int oversampleBits=3) {
+float read_battery_voltage(int oversampleBits=1) {
+  Serial.println("Reading Bat: ");
+  wdt_reset();
+
   //1.33511348465; // R2/R1 3.008/1.002
   float dividerRatio = 1.335;
 
@@ -868,6 +892,10 @@ void read_tph(float *dest) {
   if (!bmeConnected) {
     return;
   }
+
+  // Are we sure were getting a reading?
+  // also maybe have flags for if the temperature isn't reading correctly?
+  // maybe send and alert
 
   float bmeTemp = NAN;
   float bmePressure = NAN;
@@ -949,6 +977,8 @@ void take_sample() {
   sampleAccumulator.numSamples++;
 
   sram_write_accumulator(&sampleAccumulator);
+
+  wdt_reset();
 
   #if DEBUG >= 2
   printWeatherReading(sampleAccumulator);
