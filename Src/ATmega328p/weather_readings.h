@@ -3,7 +3,7 @@
 #include <math.h>
 
 struct WeatherReading {
-	uint32_t timestamp;
+	uint32_t timestamp = 0;
 	float temperature = 0;
 	float humidity = 0;
 	float pressure = 0;
@@ -16,7 +16,7 @@ struct WeatherReading {
 };
 
 struct WeatherReadingAccumulator {
-	uint32_t timestamp;
+	uint32_t timestamp = 0;
 
 	// Bme sample things
 	int32_t temperature = 0;
