@@ -1,6 +1,8 @@
 #include <ESP8266WiFi.h>
 #include "SoftwareSerial.h"
 //#include "SPISlave.h"
+#include <Wire.h>
+#define I2CAddressESPWifi 8
 
 #include "config.h"
 #include "helpers.h"
@@ -76,12 +78,12 @@ void setup()
 
   ATmegaSerial.begin(ESP_ATMEGA_BAUD_RATE);
   // We print this to make the serial sync before the commands are sent
-  ATmegaSerial.println("................");
+  ATmegaSerial.println("......................");
 
   Serial.println(".......");
-  Serial.print("Initilizing ESP8266");
+  Serial.print("Initilizing ESP8266...........");
 
-  WiFi.setAutoConnect(false);
+  //WiFi.setAutoConnect(false);
   // WiFi.mode(WIFI_OFF);
 	// WiFi.persistent(false);
 
@@ -91,6 +93,10 @@ void setup()
   digitalWrite(RESULT_PIN, LOW);
   digitalWrite(SUCCESS_PIN, LOW);
   //setup_spi_slave();
+  //
+  // Wire.begin(0, 2); //SDA, SCL, D3, D4//Change to Wire.begin() for non ESP.
+
+  Serial.println("Finished");
 }
 
 void loop() {
@@ -150,14 +156,14 @@ void loop() {
       Serial.println("Recieved Sleep Command; Sleeping Now.");
       delay(50);
       ESP.deepSleep(0);
-    } else {
-      ATmegaSerial.print("Recieved: ");
-      ATmegaSerial.print(ATmegaSerialCommand, DEC);
-      ATmegaSerial.print(" ");
-      ATmegaSerial.print(ATmegaSerialLength, DEC);
-      ATmegaSerial.print(" ");
-      ATmegaSerial.println(ATmegaSerialBuffer);
     }
+
+    // ATmegaSerial.print("Recieved: ");
+    // ATmegaSerial.print(ATmegaSerialCommand, DEC);
+    // ATmegaSerial.print(" ");
+    // ATmegaSerial.print(ATmegaSerialLength, DEC);
+    // ATmegaSerial.print(" ");
+    // ATmegaSerial.println(ATmegaSerialBuffer);
 
     ATmegaSerialCommand = 0;
     ATmegaSerialLength = 0;
@@ -209,6 +215,8 @@ bool send_request(char *url) {
   bool success = false;
 
   while (client.available()) {
+    yield();
+    
     // It seems that readStringUntil blocks if it doesn't find the char again
     String line = client.readStringUntil('\n');
 
@@ -220,7 +228,7 @@ bool send_request(char *url) {
   }
 
   client.stop();
-  
+
   Serial.print("\n[Success: ");
   Serial.print(success?"True":"False");
   Serial.println("]");

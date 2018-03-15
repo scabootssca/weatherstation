@@ -72,6 +72,22 @@ void sram_init(int csPin) {
   delay(1);
   digitalWrite(csPin, HIGH);
 
+  // Setting read to sequential
+  SPI.beginTransaction(SPISettings(SPI_HZ, MSBFIRST, SPI_MODE0));
+  digitalWrite(SRAM_CS_PIN, LOW);
+  SPI.transfer(0x05);
+  SPI.transfer(0b01000000);
+  digitalWrite(SRAM_CS_PIN, HIGH);
+  SPI.endTransaction();
+
+  // Setting write to sequential
+  SPI.beginTransaction(SPISettings(SPI_HZ, MSBFIRST, SPI_MODE0));
+  digitalWrite(SRAM_CS_PIN, LOW);
+  SPI.transfer(0x01);
+  SPI.transfer(0b01000000);
+  digitalWrite(SRAM_CS_PIN, HIGH);
+  SPI.endTransaction();
+
   Serial.print("SRAM Capacity: ");
   Serial.println(SRAM_MAX_READINGS);
 }
@@ -93,7 +109,6 @@ bool sram_begin_transaction(bool mode, uint32_t address, int size) {
 
   SPI.beginTransaction(SPISettings(SPI_HZ, MSBFIRST, SPI_MODE0));
   digitalWrite(SRAM_CS_PIN, LOW);
-  delay(1);
 
   SPI.transfer((mode == SRAM_MODE_READ)?0b00000011:0b00000010); // Read cmd: Write cmd
 
@@ -269,8 +284,9 @@ bool sram_get_populated() {
   // See if the populated key was set
   sram_begin_transaction(SRAM_MODE_READ, SRAM_ADDR_POPULATED, SRAM_SIZE_POPULATED);
   uint32_t storedValue = sram_transfer(uint32_t(0));
-  bool previouslyPopulated = (storedValue-SRAM_POPULATED_KEY) == 0;
   sram_end_transaction();
+
+  bool previouslyPopulated = (storedValue-SRAM_POPULATED_KEY) == 0;
 
   Serial.print("Populated: ");
   Serial.println(previouslyPopulated);

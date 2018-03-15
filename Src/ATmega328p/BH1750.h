@@ -21,7 +21,7 @@ Written by Christopher Laws, March, 2013.
 #else
 #include <WProgram.h>
 #endif
-#include "Wire.h"
+#include "I2C.h"
 
 #define BH1750_DEBUG 0
 

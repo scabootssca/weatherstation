@@ -1,6 +1,7 @@
 #ifndef _HELPERS_H_
 #define _HELPERS_H_
 
+#include "config.h"
 #include "RTClib.h"
 
 // 0 = Off
@@ -97,19 +98,19 @@ float convertFtoC(float f) {
   return (f - 32) * 0.55555;
 }
 
-float computeDewPoint(float T, float RH) {
-	// From wikipedia article and `Environmental Monitoring with Arduino`
-	float dewPoint = 0.0;
-	float gTRH = 0.0;
-
-	float a = 17.271;
-	float b = 237.7;
-
-	gTRH = ((a*T)/(b+T)) + log(RH/100);
-	dewPoint = (b*gTRH)/(a-gTRH);
-
-	return dewPoint;
-}
+// float computeDewPoint(float T, float RH) {
+// 	// From wikipedia article and `Environmental Monitoring with Arduino`
+// 	float dewPoint = 0.0;
+// 	float gTRH = 0.0;
+//
+// 	float a = 17.271;
+// 	float b = 237.7;
+//
+// 	gTRH = ((a*T)/(b+T)) + log(RH/100);
+// 	dewPoint = (b*gTRH)/(a-gTRH);
+//
+// 	return dewPoint;
+// }
 
 float computeHeatIndex(float temperature, float percentHumidity, bool isFahrenheit=true) {
   // Using both Rothfusz and Steadman's equations

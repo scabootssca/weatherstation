@@ -66,6 +66,11 @@ void zeroWeatherReading(WeatherReadingAccumulator *reading) {
 }
 
 void store_accumulator(WeatherReading *dest, WeatherReadingAccumulator src) {
+	// Just zero
+	if (src.numSamples == 0) {
+		return;
+	}
+
 	dest->timestamp = src.timestamp;
 	dest->temperature = (src.temperature/float(src.numSamples))*.01;
 	dest->humidity = (src.humidity/float(src.numSamples))*.01;

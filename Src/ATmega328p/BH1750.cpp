@@ -20,7 +20,7 @@ BH1750::BH1750() {
 
 void BH1750::begin(uint8_t mode) {
 
-  Wire.begin();
+  //I2C.begin();
   //write8(mode);
   configure(mode);
 
@@ -56,21 +56,23 @@ uint16_t BH1750::readLightLevel(void) {
 
   uint16_t level;
 
-  Wire.beginTransmission(BH1750_I2CADDR);
-  Wire.requestFrom(BH1750_I2CADDR, 2);
+  I2c.read(BH1750_I2CADDR, 2);
 
   delay(120); // 120ms delay for lux sensor at High res mode
 
-#if (ARDUINO >= 100)
-  level = Wire.read();
+  level = I2c.receive();
   level <<= 8;
-  level |= Wire.read();
-#else
-  level = Wire.receive();
-  level <<= 8;
-  level |= Wire.receive();
-#endif
-  Wire.endTransmission();
+  level |= I2c.receive();
+// #if (ARDUINO >= 100)
+//   level = Wire.read();
+//   level <<= 8;
+//   level |= Wire.read();
+// #else
+//   level = Wire.receive();
+//   level <<= 8;
+//   level |= Wire.receive();
+// #endif
+//   Wire.endTransmission();
 
 #if BH1750_DEBUG == 1
   Serial.print("Raw light level: ");
@@ -92,11 +94,12 @@ uint16_t BH1750::readLightLevel(void) {
 
 
 void BH1750::write8(uint8_t d) {
-  Wire.beginTransmission(BH1750_I2CADDR);
-#if (ARDUINO >= 100)
-  Wire.write(d);
-#else
-  Wire.send(d);
-#endif
-  Wire.endTransmission();
+  I2c.write(uint8_t(BH1750_I2CADDR), d);
+//   Wire.beginTransmission(BH1750_I2CADDR);
+// #if (ARDUINO >= 100)
+//   Wire.write(d);
+// #else
+//   Wire.send(d);
+// #endif
+//   Wire.endTransmission();
 }

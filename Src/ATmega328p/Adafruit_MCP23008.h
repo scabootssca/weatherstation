@@ -41,7 +41,7 @@ public:
  private:
   uint8_t i2caddr;
   uint8_t read8(uint8_t addr);
-  void write8(uint8_t addr, uint8_t data);
+  uint8_t write8(uint8_t addr, uint8_t data);
 
   uint8_t interruptHandlers[8];
 };

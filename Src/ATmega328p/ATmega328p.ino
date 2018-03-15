@@ -15,6 +15,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 */
 #include <avr/wdt.h>
 #define WD_TIMEOUT WDTO_8S
+#define I2C_TIMEOUT_MS 2000
 
 #define CLEAN_START 0 // This will mark SRAM as unpopulated and update rtc to compile time
 #define UPLOAD_TIME_OFFSET 0//53
@@ -71,21 +72,23 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 
 // Includes
 #include <limits.h>
-#include <Wire.h>
-//#include "I2C.h"
+
+#include "I2C.h"
 #include <SPI.h>
 #include <SoftwareSerial.h>
-#include <math.h>
+// #include <math.h>
 
 #include "config.h"
 #include "helpers.h"
 #include "weather_readings.h"
 
 #include "RTClib.h"
-#include <Adafruit_BME280.h>
+#include "BME280.h"
 #include "MCP_23A1024.h"
 #include "Adafruit_MCP23008.h"
 #include "BH1750.h"
+
+
 
 // Globals
 uint32_t bootTime;
@@ -114,7 +117,11 @@ uint16_t weatherReadingReadIndex = 0;
 
 unsigned short espState = ESP_STATE_SLEEP;
 
-uint32_t startEspWaitTime = 0;
+#define ESP_READY_DELAY 2000
+#define ESP_RESPONSE_DELAY 250 // This will also act as a request rate limiter
+
+uint32_t espResetTime = 0;
+uint32_t espRequestTime = 0;
 
 unsigned int failedSubmits = 0;
 unsigned int submitTimeoutCountdown = 0;
@@ -127,10 +134,10 @@ BH1750 luxMeter; // Lux
 
 SoftwareSerial ESPSerial(ESP_RX_PIN, ESP_TX_PIN);
 
-bool ESPNewline = true;
-char ESPReplyBuffer[11]; // 1 + 4 + 1 + 4 + 1 == (~ Int1 ! Int2 \n)
-short ESPReplyBufferIndex = 0;
-bool ESPReplyBuffering = false;
+// bool ESPNewline = true;
+// char ESPReplyBuffer[11]; // 1 + 4 + 1 + 4 + 1 == (~ Int1 ! Int2 \n)
+// short ESPReplyBufferIndex = 0;
+// bool ESPReplyBuffering = false;
 
 // void anemometerISR() {
 //   anemometerPulses++;
@@ -181,6 +188,27 @@ void rainBucketISR() {
   rainBucketPulses++;
 }
 
+void init_bme() {
+  DEBUG_PRINTLN("Init BME");
+
+  // BME280
+  bmeConnected = bmeSensor.begin(0x76);
+
+  // Then set it to forced so it sleeps between readings
+  if (bmeConnected) {
+    bmeSensor.setSampling(
+      bmeSensor.MODE_FORCED,
+      bmeSensor.SAMPLING_X16,
+      bmeSensor.SAMPLING_X16,
+      bmeSensor.SAMPLING_X16,
+      bmeSensor.FILTER_OFF,
+      bmeSensor.STANDBY_MS_0_5
+    );
+  } else {
+    DEBUG_PRINTLN("BME280 @ 0x76 not found.");
+  }
+}
+
 void setup() {
   // Read and reset the mcu status register
   uint8_t mcusrBootValue = MCUSR;
@@ -205,10 +233,9 @@ void setup() {
 
   DEBUG_PRINTLN(".");
 
-
   // We need to have something to send debug info with the esp to the server
   // ATmega328 Datasheet Section 15.9.1 (MCU Status Register)
-  DEBUG_PRINTLN(F("Mcu Register Status: "));
+  DEBUG_PRINTLN(F("MCUSR Value: "));
   DEBUG_PRINT(F("WDRF: "));
   DEBUG_PRINTLN((mcusrBootValue>>WDRF)&1);
   DEBUG_PRINT(F("BORF: "));
@@ -222,6 +249,8 @@ void setup() {
   ESPSerial.begin(ESP_ATMEGA_BAUD_RATE);
   ESPSerial.setTimeout(500);
 
+  DEBUG_PRINT("1."); // Esp Serial DONE
+
   pinMode(ESP_RESET_PIN, INPUT); // Input while were not using it to not interfere with ESP programming
 
   // Indicator LEDS
@@ -233,10 +262,17 @@ void setup() {
   // Battery pins
   pinMode(BAT_ADC_PIN, INPUT);
 
+  DEBUG_PRINT("2."); // ATmega pins DONE
+
   // Inter-Chip interfaces
   //Wire.begin();
+  I2c.begin();
+  I2c.timeOut(I2C_TIMEOUT_MS);
+
   SPI.begin();
   //TWBR = 72;  // 50 kHz at 8 MHz clock
+
+  DEBUG_PRINT("3."); // Interfaces started DONE
 
   // mcp23008 begin
   mcp.begin();      // use default address 0
@@ -254,7 +290,9 @@ void setup() {
   mcp.pinMode(MCP_BAT_DIV_ENABLE_PIN, OUTPUT);
   mcp.digitalWrite(MCP_BAT_DIV_ENABLE_PIN, LOW);
 
-  // Pins
+  DEBUG_PRINT("4."); // MCP pins set DONE
+
+  // Interrupts
   pinMode(ANEMOMETER_PIN, INPUT);
   digitalWrite(ANEMOMETER_PIN, LOW);
   attachInterrupt(digitalPinToInterrupt(ANEMOMETER_PIN), anemometerISR, RISING);
@@ -264,13 +302,20 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(RAIN_BUCKET_PIN), rainBucketISR, RISING);
   sei();
 
+  // Wind vane
   pinMode(WIND_VANE_ADC_PIN, INPUT);
+
+  DEBUG_PRINT("5."); // Interrupts DONE
 
   // Clock
   RTC.begin();
 
+  DEBUG_PRINT("6."); // RTC DONE
+
   // Lux Sensor (BH1750)
   luxMeter.begin(BH1750_ONE_TIME_HIGH_RES_MODE); // One shot then sleep
+
+  DEBUG_PRINTLN("7"); // Lux meter DONE
 
   // Check to see if the RTC is keeping time.  If it is, load the time from your computer.
   if (CLEAN_START || !RTC.isrunning()) {
@@ -326,31 +371,16 @@ void setup() {
     sram_write_accumulator(&sampleAccumulator);
   }
 
-  DEBUG_PRINT(F("Reading Read Index: "));
+  DEBUG_PRINT(F("Read Index: "));
   DEBUG_PRINTLN(weatherReadingReadIndex);
-  DEBUG_PRINT(F("Reading Write Index: "));
+  DEBUG_PRINT(F("Write Index: "));
   DEBUG_PRINTLN(weatherReadingWriteIndex);
   Serial.println("Accumulator: ");
   printWeatherReading(sampleAccumulator);
 
-  // BME280
-  bmeConnected = bmeSensor.begin(0x76);
+  init_bme();
 
-  // Then set it to forced so it sleeps between readings
-  if (bmeConnected) {
-    bmeSensor.setSampling(
-      bmeSensor.MODE_FORCED,
-      bmeSensor.SAMPLING_X16,
-      bmeSensor.SAMPLING_X16,
-      bmeSensor.SAMPLING_X16,
-      bmeSensor.FILTER_OFF,
-      bmeSensor.STANDBY_MS_0_5
-    );
-  } else {
-    DEBUG_PRINTLN(F("BME280 @ 0x76 not found; check wiring."));
-  }
-
-  DEBUG_PRINTLN(F("Sending Startup GET"));
+  DEBUG_PRINTLN(F("Sending Start GET"));
 
   String bootMessage = "BOOT,";
 
@@ -364,7 +394,6 @@ void setup() {
   Serial.println(bootMessage);
 
   // Wait a bit
-  wdt_reset();
   delay(500);
 
   esp_send_debug_request(bootMessage);
@@ -377,49 +406,17 @@ void setup() {
   DEBUG_PRINTLN(F("Finished Init"));
   DEBUG_PRINTLN();
 }
-//
-// void esp_do_spi() {
-//   uint32_t spiHz = 10000000;
-//   SPI.beginTransaction(SPISettings(spiHz, MSBFIRST, SPI_MODE0));
-//   mcp.digitalWrite(MCP_ESP_CS_PIN, LOW);
-//   delay(1);
-//
-//   char data[33];
-//   data[32] = 0;
-//
-//
-//   SPI.transfer(0x03);
-//   SPI.transfer(0x00);
-//   for(uint8_t i=0; i<32; i++) {
-//       data[i] = SPI.transfer(0);
-//   }
-//
-//
-//   mcp.digitalWrite(MCP_ESP_CS_PIN, HIGH);
-//   SPI.endTransaction();
-//
-//   DEBUG_PRINT(F("Sent SPI got: "));
-//   DEBUG_PRINTLN(String(data).c_str());
-// }
-
-// void esp_send_debug_request(String message) {
-//   uint16_t debugReadPos = sram_read(SRAM_ADDR_DEBUG_READ_INDEX, SRAM_SIZE_DEBUG_READ_INDEX);
-//   uint16_t debugWritePos = sram_read(SRAM_ADDR_DEBUG_WRITE_INDEX, SRAM_SIZE_DEBUG_WRITE_INDEX);
-//
-//   if (debugReadPos != debugWritePos) {
-//
-//   }
 
 void esp_send_debug_request(String message) {
   espState = ESP_STATE_AWAITING_RESULT;
-  startEspWaitTime = get_timestamp();
+  espRequestTime = get_timestamp();
 
   send_esp_serial(ESP_MSG_REQUEST, ("/debug.php?"+message).c_str());
   delay(1);
 }
 
 void esp_sleep() {
-  DEBUG_PRINTLN(F("Putting ESP to sleep now"));
+  DEBUG_PRINTLN(F("Put ESP to sleep now"));
   send_esp_serial(ESP_MSG_SLEEP, "true");
   espState = ESP_STATE_SLEEP;
 }
@@ -429,6 +426,7 @@ void esp_reset() {
 
   DEBUG_PRINTLN(F("Resetting ESP"));
   espState = ESP_STATE_RESETTING;
+  espResetTime = get_timestamp();
 
   pinMode(ESP_RESET_PIN, OUTPUT);
 
@@ -447,8 +445,8 @@ void loop() {
 
   // If we're waiting for the esp to send the result of a http request
   if (espState == ESP_STATE_AWAITING_RESULT) {
-    // If it replied
-    if (mcp.digitalRead(MCP_ESP_RESULT_PIN)) {
+    // If it replied and it's over the reset wait time
+    if (get_timestamp()-espRequestTime > ESP_RESPONSE_DELAY && mcp.digitalRead(MCP_ESP_RESULT_PIN)) {
       espState = ESP_STATE_IDLE;
 
       bool success = mcp.digitalRead(MCP_ESP_SUCCESS_PIN);
@@ -468,8 +466,6 @@ void loop() {
           DEBUG_PRINTLN(F("Aborting (!)"));
           submitTimeoutCountdown = 1;
         }
-
-        wdt_reset();
       }
 
       // If we've submitted all or too many fails then put it back to sleep
@@ -478,36 +474,36 @@ void loop() {
       }
 
     // If the esp timed out
-    } else if (get_timestamp()-startEspWaitTime > ESP_REQUEST_TIMEOUT) {
+    } else if (get_timestamp()-espRequestTime > ESP_REQUEST_TIMEOUT) {
       DEBUG_PRINTLN("Esp reply timeout.");
       // This'll start it again
       esp_reset();
     }
   // If it was resetting and it's now pulled the pins low signifying it's awake
   } else if (espState == ESP_STATE_RESETTING) {
-      // If they're low
-      if (mcp.digitalRead(MCP_ESP_RESULT_PIN) == 0 && mcp.digitalRead(MCP_ESP_SUCCESS_PIN) == 0) {
+      // If they're low and it's been an appropriate amount of time
+      if (
+        get_timestamp()-espResetTime > ESP_READY_DELAY &&
+        mcp.digitalRead(MCP_ESP_RESULT_PIN) == 0 &&
+        mcp.digitalRead(MCP_ESP_SUCCESS_PIN) == 0
+      ) {
         // Idle now, on next loop we can send it a command
         espState = ESP_STATE_IDLE;
       }
-  // ESP_STATE_IDLE, no timeout condition and results waiting for submission
+  // ESP_STATE_IDLE
   } else if (espState == ESP_STATE_IDLE) {
+    // No timeout condition and results waiting for submission
     if (submitTimeoutCountdown <= 0 && weatherReadingReadIndex != weatherReadingWriteIndex) {
       submit_reading();
+    // Means we're not submitting so put it back to sleep
+    } else {
+      esp_sleep();
     }
   }
 
   // Time to sample
   if (millis()-lastSampleMillis > SAMPLE_INTERVAL) {
     take_sample();
-
-    // If we're at the sample before last
-    if (sampleAccumulator.numSamples == SAMPLES_PER_READING-1) {
-      // Wake the esp if it's sleeping
-      if (espState == ESP_STATE_SLEEP) {
-        esp_reset();
-      }
-    }
   }
 
   // If we've enough samples to make a reading
@@ -515,6 +511,8 @@ void loop() {
     // Average the accumuator as a reading and store it
     WeatherReading currentReading = get_averaged_accumulator(sampleAccumulator);
     sram_write_reading(&currentReading, weatherReadingWriteIndex);
+
+    // Need to have a test here that it wrote successfully, maybe reading and comaring or something?
 
     // Then zero the accumulator and store it
     zeroWeatherReading(&sampleAccumulator);
@@ -544,6 +542,19 @@ void loop() {
       if (submitTimeoutCountdown == 0) {
         failedSubmits = 0;
       }
+    }
+
+    // This could potentially submit an invalid bme reading if it wasn't detected
+    // for that reading and is now it'll submit invalid readings for the one that came before
+    // Maybe have a bitflag set for the data for errors that occured during that reading
+    // Try and detect the sensors for the next reading
+    if (!bmeConnected) {
+      init_bme();
+    }
+
+    // Wake the esp if it's sleeping
+    if (espState == ESP_STATE_SLEEP) {
+      esp_reset();
     }
   }
 }
@@ -578,36 +589,35 @@ String generate_request_url(WeatherReading weatherReading) {
 	  }
 
 	  if (!isnan(weatherReading.humidity)) {
-	      outputUrl += "&humidity=";
+	      outputUrl += "&hum=";
 	      outputUrl += weatherReading.humidity;
 
 	      // If we have temperature and humidity then calculate and submit the heat index also
 	      if (!isnan(weatherReading.temperature)) {
-	        outputUrl += "&heatIndex=";
+	        outputUrl += "&hI=";
 	        outputUrl += computeHeatIndex(weatherReading.temperature, weatherReading.humidity, false);
 	      }
 	  }
 
 	  if (!isnan(weatherReading.pressure)) {
-	    outputUrl += "&pressure=";
+	    outputUrl += "&pres=";
 	    outputUrl += weatherReading.pressure;
 	  }
 	}
 
   outputUrl += "&bat=";
   outputUrl += weatherReading.batteryMv;
-  outputUrl += "&windGust=";
+  outputUrl += "&wGust=";
   outputUrl += weatherReading.windGust;
-  outputUrl += "&windSpeed=";
+  outputUrl += "&wSpd=";
   outputUrl += weatherReading.windSpeed;
-  outputUrl += "&windDirection=";
+  outputUrl += "&wDir=";
   outputUrl += weatherReading.windDirection;
 	outputUrl += "&rain=";
 	outputUrl += weatherReading.rain;
   outputUrl += "&lux=";
   outputUrl += weatherReading.lux;
-
-  outputUrl += "&timestamp=";
+  outputUrl += "&time=";
   outputUrl += weatherReading.timestamp;
 
   // Secret key for security (>_O)
@@ -615,6 +625,7 @@ String generate_request_url(WeatherReading weatherReading) {
 
 	return outputUrl;
 }
+
 
 void submit_reading() {
   wdt_reset();
@@ -624,21 +635,39 @@ void submit_reading() {
   DEBUG_PRINTLN(weatherReadingReadIndex);
 
   WeatherReading currentReading;
-  sram_read_reading(&currentReading, weatherReadingReadIndex);
 
-  // Maybe have this count and keep skip it if the read fails a few times?
-  //possibly a crc or something?
-  if (currentReading.timestamp == 0 || currentReading.timestamp > get_timestamp()) {
-    DEBUG_PRINTLN(F("Corrupt reading: Skipping."));
-    advance_read_pointer();
-    return;
+  for (int i=0; i<3; i++) {
+    sram_read_reading(&currentReading, weatherReadingReadIndex);
+
+    printWeatherReading(currentReading);
+
+    // Maybe have this count and keep skip it if the read fails a few times?
+    //possibly a crc or something?
+    if (currentReading.timestamp == 0 || currentReading.timestamp > get_timestamp()) {
+      DEBUG_PRINT(F("Corrupt reading: "));
+
+      if (i < 2) {
+        DEBUG_PRINTLN("Retry");
+        continue;
+      }
+
+      // Need to have this make the ESP send something like a
+      // debug message saying the reading was skipped and sending the data
+      // of the reading
+
+      DEBUG_PRINTLN(F("Skipping"));
+      advance_read_pointer();
+      return;
+    }
+
+    // No errors then break
+    break;
   }
 
-  printWeatherReading(currentReading);
   String outputUrl = generate_request_url(currentReading);
 
   espState = ESP_STATE_AWAITING_RESULT;
-  startEspWaitTime = get_timestamp();
+  espRequestTime = get_timestamp();
   send_esp_serial(ESP_MSG_REQUEST, outputUrl.c_str());
 }
 
@@ -651,6 +680,9 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
   // Oversample for 10 -> 10+oversampleBits bit adc resolution
   // 4^additionalBits
   int numSamples = (int)pow(4.0, oversampleBits);
+
+  // DEBUG2_PRINT(F(" # Samples: "));
+  // DEBUG2_PRINT(numSamples);
 
 	float refPinReading = 0.0;
 	float channelPinReading = 0.0;
@@ -700,10 +732,10 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
 
 	DEBUG2_PRINT(F(" vccMv: "));
 	DEBUG2_PRINT(vccMv);
-	DEBUG2_PRINT(F(" pinMv: "));
-	DEBUG2_PRINT(pinMv);
-  DEBUG2_PRINT(F(" readingMv: "));
-  DEBUG2_PRINT(readingMv);
+	// DEBUG2_PRINT(F(" pinMv: "));
+	// DEBUG2_PRINT(pinMv);
+  // DEBUG2_PRINT(F(" readingMv: "));
+  // DEBUG2_PRINT(readingMv);
 	DEBUG2_PRINT(F(" resultMv: "));
 	DEBUG2_PRINTLN(readingMv+offset);
 
@@ -718,11 +750,11 @@ void send_esp_serial(char messageType, const char *value) {
   DEBUG_PRINT((int)strlen(value));
   DEBUG_PRINT(value);
 
-  ESPSerial.print(messageType);
-  ESPSerial.print((char)strlen(value));
-  ESPSerial.print(value);
+  ESPSerial.write(messageType);
+  ESPSerial.write((char)strlen(value));
+  ESPSerial.write(value);
 
-  DEBUG_PRINT(" (done)");
+  DEBUG_PRINTLN(" (done)");
 }
 
 // bool recv_esp_serial() {
@@ -836,7 +868,7 @@ int read_rain() {
   rainBucketPulses = 0;
   sei();
 
-  DEBUG3_PRINT(F("Num rain pulses: "));
+  DEBUG3_PRINT("Num rain pulses: ");
   DEBUG3_PRINTLN(numTimelyPulses);
 
   return numTimelyPulses;
@@ -854,8 +886,7 @@ void read_wind_vane(float *destX, float *destY) {
 }
 
 float read_battery_voltage(int oversampleBits=1) {
-  Serial.println("Reading Bat: ");
-  wdt_reset();
+  Serial.println("Read Bat: ");
 
   //1.33511348465; // R2/R1 3.008/1.002
   float dividerRatio = 1.335;
@@ -889,10 +920,6 @@ void read_tph(float *dest) {
   //******************************************/
   //* TEMPERATURE, HUMIDITY, BAROMETER BLOCK */
   //******************************************/
-  if (!bmeConnected) {
-    return;
-  }
-
   // Are we sure were getting a reading?
   // also maybe have flags for if the temperature isn't reading correctly?
   // maybe send and alert
@@ -936,12 +963,14 @@ void take_sample() {
   DEBUG2_PRINTLN(weatherReadingReadIndex);
   DEBUG2_PRINT(F("Free Ram (bytes): "));
   DEBUG2_PRINTLN(getFreeRam());
+  DEBUG2_PRINT("Esp State: ");
+  DEBUG2_PRINTLN(espState);
   DEBUG2_PRINT(F("Uptime: "));
   DEBUG2_PRINT((get_timestamp()-bootTime)/60.0);
   DEBUG2_PRINT(F(" (mins) since "));
-  #if DEBUG >= 2
-  print_pretty_timestamp(bootTime);
-  #endif
+  if (DEBUG >= 2) {
+    print_pretty_timestamp(bootTime);
+  }
   DEBUG2_PRINTLN();
   #endif
 
@@ -964,12 +993,15 @@ void take_sample() {
   }
 
   // Humidity, Temperature, Pressure
-  float bmeReadings[3];
-  read_tph(bmeReadings);
+  if (bmeConnected)
+  {
+    float bmeReadings[3];
+    read_tph(bmeReadings);
 
-  sampleAccumulator.temperature += int32_t(bmeReadings[0]*100);
-  sampleAccumulator.pressure += int32_t(bmeReadings[1]*100);
-  sampleAccumulator.humidity += int32_t(bmeReadings[2]*100);
+    sampleAccumulator.temperature += int32_t(bmeReadings[0]*100);
+    sampleAccumulator.pressure += int32_t(bmeReadings[1]*100);
+    sampleAccumulator.humidity += int32_t(bmeReadings[2]*100);
+  }
 
   // Lux
   sampleAccumulator.lux += read_lux();
@@ -977,8 +1009,6 @@ void take_sample() {
   sampleAccumulator.numSamples++;
 
   sram_write_accumulator(&sampleAccumulator);
-
-  wdt_reset();
 
   #if DEBUG >= 2
   printWeatherReading(sampleAccumulator);

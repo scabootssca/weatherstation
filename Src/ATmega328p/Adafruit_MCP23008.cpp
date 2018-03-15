@@ -16,7 +16,8 @@
 #else
  #include "WProgram.h"
 #endif
-#include <Wire.h>
+#include "I2C.h"
+
 #ifdef __AVR
   #include <avr/pgmspace.h>
 #elif defined(ESP8266)
@@ -34,36 +35,39 @@ void Adafruit_MCP23008::begin(uint8_t addr) {
   }
   i2caddr = addr;
 
-  Wire.begin();
+  //Wire.begin();
 
   // set defaults!
-  Wire.beginTransmission(MCP23008_ADDRESS | i2caddr);
-#if ARDUINO >= 100
-  Wire.write((byte)MCP23008_IODIR);
-  Wire.write((byte)0xFF);  // all inputs
-  Wire.write((byte)0x00);
-  Wire.write((byte)0x00);
-  Wire.write((byte)0x00);
-  Wire.write((byte)0x00);
-  Wire.write((byte)0x00);
-  Wire.write((byte)0x00);
-  Wire.write((byte)0x00);
-  Wire.write((byte)0x00);
-  Wire.write((byte)0x00);
-#else
-  Wire.send(MCP23008_IODIR);
-  Wire.send(0xFF);  // all inputs
-  Wire.send(0x00);
-  Wire.send(0x00);
-  Wire.send(0x00);
-  Wire.send(0x00);
-  Wire.send(0x00);
-  Wire.send(0x00);
-  Wire.send(0x00);
-  Wire.send(0x00);
-  Wire.send(0x00);
-#endif
-  Wire.endTransmission();
+  uint8_t toSend[] = {0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  I2c.write((MCP23008_ADDRESS | i2caddr), MCP23008_IODIR, toSend, sizeof(toSend));
+//
+//   Wire.beginTransmission(MCP23008_ADDRESS | i2caddr);
+// #if ARDUINO >= 100
+//   Wire.write((byte)MCP23008_IODIR);
+//   Wire.write((byte)0xFF);  // all inputs
+//   Wire.write((byte)0x00);
+//   Wire.write((byte)0x00);
+//   Wire.write((byte)0x00);
+//   Wire.write((byte)0x00);
+//   Wire.write((byte)0x00);
+//   Wire.write((byte)0x00);
+//   Wire.write((byte)0x00);
+//   Wire.write((byte)0x00);
+//   Wire.write((byte)0x00);
+// #else
+//   Wire.send(MCP23008_IODIR);
+//   Wire.send(0xFF);  // all inputs
+//   Wire.send(0x00);
+//   Wire.send(0x00);
+//   Wire.send(0x00);
+//   Wire.send(0x00);
+//   Wire.send(0x00);
+//   Wire.send(0x00);
+//   Wire.send(0x00);
+//   Wire.send(0x00);
+//   Wire.send(0x00);
+// #endif
+//   Wire.endTransmission();
 
 }
 
@@ -277,31 +281,55 @@ void Adafruit_MCP23008::disableInterrupt(uint8_t pin) {
 }
 
 uint8_t Adafruit_MCP23008::read8(uint8_t addr) {
-  Wire.beginTransmission(MCP23008_ADDRESS | i2caddr);
-#if ARDUINO >= 100
-  Wire.write((byte)addr);
-#else
-  Wire.send(addr);
-#endif
-  Wire.endTransmission();
-  Wire.requestFrom(MCP23008_ADDRESS | i2caddr, 1);
+  uint8_t returnCode = I2c.read(uint8_t(MCP23008_ADDRESS | i2caddr), addr, uint8_t(1));
 
-#if ARDUINO >= 100
-  return Wire.read();
-#else
-  return Wire.receive();
-#endif
+  if (returnCode != 0) {
+    Serial.print(F("I2c Error R MCP23008 @"));
+    Serial.print(uint8_t(MCP23008_ADDRESS | i2caddr), HEX);
+    Serial.print(F(":"));
+    Serial.print(addr);
+    Serial.print(F(":"));
+    Serial.println(returnCode);
+  }
+
+  return I2c.receive();
+//   Wire.beginTransmission(MCP23008_ADDRESS | i2caddr);
+// #if ARDUINO >= 100
+//   Wire.write((byte)addr);
+// #else
+//   Wire.send(addr);
+// #endif
+//   Wire.endTransmission();
+//   Wire.requestFrom(MCP23008_ADDRESS | i2caddr, 1);
+//
+// #if ARDUINO >= 100
+//   return Wire.read();
+// #else
+//   return Wire.receive();
+// #endif
 }
 
 
-void Adafruit_MCP23008::write8(uint8_t addr, uint8_t data) {
-  Wire.beginTransmission(MCP23008_ADDRESS | i2caddr);
-#if ARDUINO >= 100
-  Wire.write((byte)addr);
-  Wire.write((byte)data);
-#else
-  Wire.send(addr);
-  Wire.send(data);
-#endif
-  Wire.endTransmission();
+uint8_t Adafruit_MCP23008::write8(uint8_t addr, uint8_t data) {
+  uint8_t returnCode = I2c.write(uint8_t(MCP23008_ADDRESS | i2caddr), addr, data);
+
+  if (returnCode != 0) {
+    Serial.print(F("I2c Error W MCP23008 @"));
+    Serial.print(uint8_t(MCP23008_ADDRESS | i2caddr));
+    Serial.print(F(":"));
+    Serial.print(addr);
+    Serial.print(F(":"));
+    Serial.println(returnCode);
+  }
+
+  return returnCode;
+//   Wire.beginTransmission(MCP23008_ADDRESS | i2caddr);
+// #if ARDUINO >= 100
+//   Wire.write((byte)addr);
+//   Wire.write((byte)data);
+// #else
+//   Wire.send(addr);
+//   Wire.send(data);
+// #endif
+//   Wire.endTransmission();
 }
