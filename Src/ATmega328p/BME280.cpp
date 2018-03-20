@@ -15,9 +15,9 @@
   BSD license, all text above must be included in any redistribution
  ***************************************************************************/
 #include "Arduino.h"
-//#include <Wire.h>
+
 #include "I2C.h"
-#include <SPI.h>
+
 #include "BME280.h"
 
 /***************************************************************************
@@ -71,24 +71,11 @@ bool Adafruit_BME280::begin(void)
 
 bool Adafruit_BME280::init()
 {
-    // init I2C or SPI sensor interface
-    if (_cs == -1) {
-        // I2C
-        //_wire -> begin();
-      }
-    // } else {
-    //     digitalWrite(_cs, HIGH);
-    //     pinMode(_cs, OUTPUT);
-    //     if (_sck == -1) {
-    //         // hardware SPI
-    //         SPI.begin();
-    //     } else {
-    //         // software SPI
-    //         pinMode(_sck, OUTPUT);
-    //         pinMode(_mosi, OUTPUT);
-    //         pinMode(_miso, INPUT);
-    //     }
-    // }
+    // // init I2C or SPI sensor interface
+    // if (_cs == -1) {
+    //     // I2C
+    //     //_wire -> begin();
+    //   }
 
     // check if sensor, i.e. the chip ID is correct
     if (read8(BME280_REGISTER_CHIPID) != 0x60)
@@ -146,31 +133,6 @@ void Adafruit_BME280::setSampling(sensor_mode       mode,
     write8(BME280_REGISTER_CONFIG, _configReg.get());
     write8(BME280_REGISTER_CONTROL, _measReg.get());
 }
-
-
-/**************************************************************************/
-/*!
-    @brief  Encapsulate hardware and software SPI transfer into one function
-*/
-/**************************************************************************/
-uint8_t Adafruit_BME280::spixfer(uint8_t x) {
-    // hardware SPI
-    if (_sck == -1)
-        return SPI.transfer(x);
-
-    // software SPI
-    uint8_t reply = 0;
-    for (int i=7; i>=0; i--) {
-        reply <<= 1;
-        digitalWrite(_sck, LOW);
-        digitalWrite(_mosi, x & (1<<i));
-        digitalWrite(_sck, HIGH);
-        if (digitalRead(_miso))
-            reply |= 1;
-        }
-    return reply;
-}
-
 
 /**************************************************************************/
 /*!

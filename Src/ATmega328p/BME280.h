@@ -193,7 +193,6 @@ class Adafruit_BME280 {
 		I2C *_wire;
         void readCoefficients(void);
         bool isReadingCalibration(void);
-        uint8_t spixfer(uint8_t x);
 
         void      write8(byte reg, byte value);
         uint8_t   read8(byte reg);
