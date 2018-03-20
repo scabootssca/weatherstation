@@ -282,6 +282,7 @@ void Adafruit_MCP23008::disableInterrupt(uint8_t pin) {
 
 uint8_t Adafruit_MCP23008::read8(uint8_t addr) {
   uint8_t returnCode = I2c.read(uint8_t(MCP23008_ADDRESS | i2caddr), addr, uint8_t(1));
+  uint8_t result = I2c.receive();
 
   if (returnCode != 0) {
     Serial.print(F("I2c Error R MCP23008 @"));
@@ -289,10 +290,12 @@ uint8_t Adafruit_MCP23008::read8(uint8_t addr) {
     Serial.print(F(":"));
     Serial.print(addr);
     Serial.print(F(":"));
-    Serial.println(returnCode);
+    Serial.print(returnCode);
+    Serial.print(F(":"));
+    Serial.println(result);
   }
 
-  return I2c.receive();
+  return result;
 //   Wire.beginTransmission(MCP23008_ADDRESS | i2caddr);
 // #if ARDUINO >= 100
 //   Wire.write((byte)addr);
@@ -319,7 +322,9 @@ uint8_t Adafruit_MCP23008::write8(uint8_t addr, uint8_t data) {
     Serial.print(F(":"));
     Serial.print(addr);
     Serial.print(F(":"));
-    Serial.println(returnCode);
+    Serial.print(returnCode);
+    Serial.print(F(":"));
+    Serial.println(data);
   }
 
   return returnCode;
