@@ -34,6 +34,10 @@ READINGS:
 
 #define SPI_HZ 500000 // 500Khz
 
+// New timing defines
+#define SAMPLE_DELTA_SHORT 3000
+#define SAMPLE_DELTA_LONG 10000
+
 // Sample and Reading defines
 #define SAMPLE_INTERVAL 2000
 #define READING_INTERVAL 300000 //SAMPLE_INTERVAL*5///300000 // 300000 = 5 minutes
