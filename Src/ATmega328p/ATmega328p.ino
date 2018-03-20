@@ -64,7 +64,9 @@ READINGS:
 
 #define WIND_VANE_ADC_PIN A1 // PC1
 #define BAT_ADC_PIN A2       // PC2
-#define REF_ADC_PIN A3       // PC3+
+#define REF_ADC_PIN A3       // PC3
+#define I2C_SDA_PIN A4       // PC4
+#define I2C_SCL_PIN A5       // PC5
 
 #define RAIN_BUCKET_PIN 2    // PD2
 #define ANEMOMETER_PIN 3     // PD3
@@ -277,7 +279,22 @@ void setup() {
   DEBUG_PRINT("2."); // ATmega pins DONE
 
   // Inter-Chip interfaces
-  //Wire.begin();
+
+  // Reset I2c Bus with 9 clock pulses as per specs
+  pinMode(I2C_SDA_PIN, INPUT);
+  pinMode(I2C_SCL_PIN, OUTPUT);
+
+  for (int i=0; i<18; i++) {
+    digitalWrite(I2C_SCL_PIN, i?HIGH:LOW);
+  }
+
+  pinMode(I2C_SCL_PIN, INPUT);
+
+  // Check for inactive
+  if (!digitalRead(I2C_SCL_PIN) || !digitalRead(I2C_SCL_PIN)) {
+    DEBUG_PRINTLN("I2C Stuck, Needs power cycle");
+  }
+
   I2c.begin();
   I2c.timeOut(I2C_TIMEOUT_MS);
 
