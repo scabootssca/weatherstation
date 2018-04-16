@@ -36,46 +36,46 @@ struct WeatherReadingAccumulator {
 	uint8_t numBatterySamples = 0;
 };
 
-struct SampleAccumulator {
-	// Temperature (*C)
-	uint8_t numSampTemp = 0;
-	int32_t lastSampTemp = 0;
-	int32_t accumTemp = 0;
-
-	// Humidity (%)
-	uint8_t numSampHum = 0;
-	uint32_t lastSampHum = 0;
-	uint32_t accumHum = 0;
-
-	// Barometric Pressure (mBar)
-	uint8_t numSampPress = 0;
-	uint32_t lastSampPress = 0;
-	uint64_t accumPress = 0;
-
-	// Battery in Mv
-	uint8_t numSampBat = 0;
-	uint32_t lastSampBat = 0;
-	uint32_t accumBat = 0;
-
-	// Wind (Mph)
-	uint8_t numSampWindSpeed = 0;
-	uint32_t lastSampWindSpeed = 0;
-	uint32_t accumWindSpeed = 0;
-
-	uint32_t windGust = 0;
-
-	// Wind Dir (X, Y) in a unit circle
-	uint8_t numSampWindDir = 0;
-	int32_t windDir[2] = {0, 0};
-
-	// Rain (Pulses (ml?))
-	uint8_t numSampRain = 0;
-	uint32_t accumRain = 0;
-
-	// Lux (lux)
-	uint8_t numSampLux = 0;
-	uint8_t accumLux = 0;
-}
+// struct SampleAccumulator {
+// 	// Temperature (*C)
+// 	uint8_t numSampTemp = 0;
+// 	int32_t lastSampTemp = 0;
+// 	int32_t accumTemp = 0;
+//
+// 	// Humidity (%)
+// 	uint8_t numSampHum = 0;
+// 	uint32_t lastSampHum = 0;
+// 	uint32_t accumHum = 0;
+//
+// 	// Barometric Pressure (mBar)
+// 	uint8_t numSampPress = 0;
+// 	uint32_t lastSampPress = 0;
+// 	uint64_t accumPress = 0;
+//
+// 	// Battery in Mv
+// 	uint8_t numSampBat = 0;
+// 	uint32_t lastSampBat = 0;
+// 	uint32_t accumBat = 0;
+//
+// 	// Wind (Mph)
+// 	uint8_t numSampWindSpeed = 0;
+// 	uint32_t lastSampWindSpeed = 0;
+// 	uint32_t accumWindSpeed = 0;
+//
+// 	uint32_t windGust = 0;
+//
+// 	// Wind Dir (X, Y) in a unit circle
+// 	uint8_t numSampWindDir = 0;
+// 	int32_t windDir[2] = {0, 0};
+//
+// 	// Rain (Pulses (ml?))
+// 	uint8_t numSampRain = 0;
+// 	uint32_t accumRain = 0;
+//
+// 	// Lux (lux)
+// 	uint8_t numSampLux = 0;
+// 	uint8_t accumLux = 0;
+// };
 
 void zeroWeatherReading(WeatherReading *reading) {
 	reading->timestamp = 0;

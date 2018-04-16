@@ -208,6 +208,19 @@ uint8_t I2C::receive()
   return(data[bufferIndex]);
 }
 
+void I2C::countError(uint8_t i2cAddr, uint8_t addr, uint8_t returnCode, uint8_t result)
+{
+  numI2cErrors++;
+
+  Serial.print(F("I2c Error "));
+  Serial.print(returnCode);
+  Serial.print(" ");
+  Serial.print(i2cAddr, HEX);
+  Serial.print(F("@"));
+  Serial.print(addr);
+  Serial.print(F(" -> "));
+  Serial.println(result);
+}
 
 /*return values for new functions that use the timeOut feature
   will now return at what point in the transmission the timeout

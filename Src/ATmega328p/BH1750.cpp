@@ -56,13 +56,18 @@ uint16_t BH1750::readLightLevel(void) {
 
   uint16_t level;
 
-  I2c.read(BH1750_I2CADDR, 2);
+  uint8_t returnCode = I2c.read(BH1750_I2CADDR, 2);
 
   delay(120); // 120ms delay for lux sensor at High res mode
 
   level = I2c.receive();
   level <<= 8;
   level |= I2c.receive();
+
+  if (returnCode != 0) {
+    I2c.countError(BH1750_I2CADDR, 0, returnCode, 0);
+  }
+
 // #if (ARDUINO >= 100)
 //   level = Wire.read();
 //   level <<= 8;

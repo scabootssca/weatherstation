@@ -97,6 +97,7 @@ class I2C
     void setSpeed(uint8_t);
     void pullup(uint8_t);
     void scan();
+    void countError(uint8_t, uint8_t, uint8_t, uint8_t);
     uint8_t available();
     uint8_t receive();
     uint8_t write(uint8_t, uint8_t);
@@ -112,6 +113,7 @@ class I2C
     uint8_t read(uint8_t, uint8_t, uint8_t*);
     uint8_t read(uint8_t, uint8_t, uint8_t, uint8_t*);
 
+    unsigned short numI2cErrors = 0;
 
   private:
     uint8_t start();
@@ -127,7 +129,6 @@ class I2C
     static uint8_t bufferIndex;
     static uint8_t totalBytes;
     static uint16_t timeOutDelay;
-
 };
 
 extern I2C I2c;

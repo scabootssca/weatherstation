@@ -41,6 +41,21 @@
 #define DEBUG3_PRINTLN(...)
 #endif
 
+void check_i2c_error(const char *devName, uint8_t returnCode, uint8_t i2caddr, uint8_t reg, uint8_t data) {
+  if (returnCode != 0) {
+    Serial.print(F("I2c Error "));
+    Serial.print(returnCode);
+    Serial.print(" ");
+    Serial.print(devName);
+    Serial.print("@");
+    Serial.print(i2caddr);
+    Serial.print(F(" "));
+    Serial.print(reg);
+    Serial.print(F(" -> "));
+    Serial.println(data);
+  }
+}
+
 // void send_serial(SoftwareSerial *serial, char messageType, const char *value) {
 //   Serial.print("SoftwareSerial (sent)");
 //   Serial.print((int)messageType);

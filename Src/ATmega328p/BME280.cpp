@@ -144,10 +144,7 @@ void Adafruit_BME280::write8(byte reg, byte value) {
         uint8_t returnCode = _wire -> write((uint8_t)_i2caddr, (uint8_t)reg, (uint8_t)value);
 
         if (returnCode != 0) {
-          Serial.print("I2c Error W8 BME280 @");
-          Serial.print(reg);
-          Serial.print(": ");
-          Serial.println(returnCode);
+          I2c.countError(_i2caddr, reg, returnCode, 0);
         }
         // _wire -> beginTransmission((uint8_t)_i2caddr);
         // _wire -> write((uint8_t)reg);
@@ -169,12 +166,7 @@ uint8_t Adafruit_BME280::read8(byte reg) {
         uint8_t returnCode = _wire -> read((uint8_t)_i2caddr, (uint8_t)reg, uint8_t(1));
 
         if (returnCode != 0) {
-          Serial.print("I2c Error R8 BME280 @");
-          Serial.print(_i2caddr);
-          Serial.print(F(":"));
-          Serial.print(reg);
-          Serial.print(F(":"));
-          Serial.println(returnCode);
+          I2c.countError(_i2caddr, reg, returnCode, 0);
         }
 
         value = _wire -> receive();
@@ -203,12 +195,7 @@ uint16_t Adafruit_BME280::read16(byte reg)
         uint8_t returnCode = _wire -> read((uint8_t)_i2caddr, (uint8_t)reg, uint8_t(2));
 
         if (returnCode != 0) {
-          Serial.print("I2c Error R16 BME280 @");
-          Serial.print(_i2caddr);
-          Serial.print(F(":"));
-          Serial.print(reg);
-          Serial.print(F(":"));
-          Serial.println(returnCode);
+          I2c.countError(_i2caddr, reg, returnCode, 0);
         }
 
         value = (_wire -> receive() << 8) | _wire -> receive();
@@ -269,12 +256,7 @@ uint32_t Adafruit_BME280::read24(byte reg)
         uint8_t returnCode = _wire -> read((uint8_t)_i2caddr, (uint8_t)reg, uint8_t(3));
 
         if (returnCode != 0) {
-          Serial.print("I2c Error R24 BME280 @");
-          Serial.print(_i2caddr);
-          Serial.print(F(":"));
-          Serial.print(reg);
-          Serial.print(F(":"));
-          Serial.println(returnCode);
+          I2c.countError(_i2caddr, reg, returnCode, 0);
         }
 
         value = _wire -> receive();

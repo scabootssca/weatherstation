@@ -285,14 +285,7 @@ uint8_t Adafruit_MCP23008::read8(uint8_t addr) {
   uint8_t result = I2c.receive();
 
   if (returnCode != 0) {
-    Serial.print(F("I2c Error R MCP23008 @"));
-    Serial.print(uint8_t(MCP23008_ADDRESS | i2caddr), HEX);
-    Serial.print(F(":"));
-    Serial.print(addr);
-    Serial.print(F(":"));
-    Serial.print(returnCode);
-    Serial.print(F(":"));
-    Serial.println(result);
+    I2c.countError(uint8_t(MCP23008_ADDRESS | i2caddr), addr, returnCode, result);
   }
 
   return result;
@@ -317,14 +310,7 @@ uint8_t Adafruit_MCP23008::write8(uint8_t addr, uint8_t data) {
   uint8_t returnCode = I2c.write(uint8_t(MCP23008_ADDRESS | i2caddr), addr, data);
 
   if (returnCode != 0) {
-    Serial.print(F("I2c Error W MCP23008 @"));
-    Serial.print(uint8_t(MCP23008_ADDRESS | i2caddr));
-    Serial.print(F(":"));
-    Serial.print(addr);
-    Serial.print(F(":"));
-    Serial.print(returnCode);
-    Serial.print(F(":"));
-    Serial.println(data);
+    I2c.countError(uint8_t(MCP23008_ADDRESS | i2caddr), addr, returnCode, data);
   }
 
   return returnCode;

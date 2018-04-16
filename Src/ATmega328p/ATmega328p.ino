@@ -44,7 +44,6 @@ READINGS:
 #define SAMPLES_PER_READING READING_INTERVAL/SAMPLE_INTERVAL
 #define BATTERY_SAMPLE_MODULO 25
 #define MAX_FAILED_SUBMITS 3
-#define ESP_REQUEST_TIMEOUT 30 // In seconds
 
 
 // Wind Vane Calibration
@@ -131,12 +130,15 @@ uint16_t weatherReadingReadIndex = 0;
 #define ESP_STATE_SLEEP 0
 #define ESP_STATE_IDLE 1
 #define ESP_STATE_AWAITING_RESULT 2
-#define ESP_STATE_RESETTING 3
+#define ESP_STATE_RESETTING 3 // It can get stuck in here at line
 
 unsigned short espState = ESP_STATE_SLEEP;
 
-#define ESP_READY_DELAY 2000
-#define ESP_RESPONSE_DELAY 250 // This will also act as a request rate limiter
+// All in seconds
+#define ESP_RESET_READY_DELAY 2 // In seconds how long to wait after resetting the esp before trying to make it send a request
+#define ESP_RESET_TIMEOUT 30 // How long after resetting to wait for a response before trying again
+#define ESP_REQUEST_TIMEOUT 30 // In seconds after sending a request to call it failed
+#define ESP_REQUEST_DELAY 2 // This will also act as a request rate limiter
 
 uint32_t espResetTime = 0;
 uint32_t espRequestTime = 0;
@@ -227,6 +229,28 @@ void init_bme() {
   }
 }
 
+bool init_i2c() {
+  I2c.end();
+
+  // Reset I2c Bus with 9 clock pulses as per specs
+  pinMode(I2C_SDA_PIN, INPUT);
+  pinMode(I2C_SCL_PIN, OUTPUT);
+
+  for (int i=0; i<18; i++) {
+    digitalWrite(I2C_SCL_PIN, i?HIGH:LOW);
+  }
+
+  pinMode(I2C_SCL_PIN, INPUT);
+
+  // If either is low then it may still be stuck
+  if (!digitalRead(I2C_SCL_PIN) || !digitalRead(I2C_SDA_PIN)) {
+    esp_send_debug_request("I2C_Stuck");
+  }
+
+  I2c.begin();
+  I2c.timeOut(I2C_TIMEOUT_MS);
+}
+
 void setup() {
   // Read and reset the mcu status register
   uint8_t mcusrBootValue = MCUSR;
@@ -283,24 +307,7 @@ void setup() {
   DEBUG_PRINT("2."); // ATmega pins DONE
 
   // Inter-Chip interfaces
-
-  // Reset I2c Bus with 9 clock pulses as per specs
-  pinMode(I2C_SDA_PIN, INPUT);
-  pinMode(I2C_SCL_PIN, OUTPUT);
-
-  for (int i=0; i<18; i++) {
-    digitalWrite(I2C_SCL_PIN, i?HIGH:LOW);
-  }
-
-  pinMode(I2C_SCL_PIN, INPUT);
-
-  // Check for inactive
-  if (!digitalRead(I2C_SCL_PIN) || !digitalRead(I2C_SCL_PIN)) {
-    DEBUG_PRINTLN("I2C Stuck, Needs power cycle");
-  }
-
-  I2c.begin();
-  I2c.timeOut(I2C_TIMEOUT_MS);
+  init_i2c();
 
   SPI.begin();
   //TWBR = 72;  // 50 kHz at 8 MHz clock
@@ -352,15 +359,16 @@ void setup() {
 
   // Check to see if the RTC is keeping time.  If it is, load the time from your computer.
   if (CLEAN_START || !RTC.isrunning()) {
-    DEBUG_PRINTLN(F("Syncing RTC to compile time (UTC)"));
-
     // This will reflect the time that your sketch was compiled
     // Sucks cause if it takes forever to upload then its funny
+    DEBUG_PRINTLN(F("Syncing RTC to compile time (local))"));
     RTC.adjust(DateTime(DateTime(__DATE__, __TIME__) - TimeSpan(60*60*GMT_OFFSET) + TimeSpan(UPLOAD_TIME_OFFSET)));
   }
 
   // Store boot time
   bootTime = RTC.now().unixtime();
+  Serial.print("Boot Time: ");
+  print_pretty_timestamp(bootTime);
 
   // SRAM init
   DEBUG_PRINTLN(F("Start SRAM"));
@@ -413,7 +421,8 @@ void setup() {
 
   init_bme();
 
-  DEBUG_PRINTLN(F("Sending Start GET"));
+  // Wait a bit
+  delay(500);
 
   String bootMessage = "BOOT,";
 
@@ -423,15 +432,7 @@ void setup() {
   bootMessage += ((mcusrBootValue>>BORF)&1)?"1":"0";
   bootMessage += ((mcusrBootValue>>WDRF)&1)?"1":"0";
 
-  Serial.print(F("Bootmsg: "));
-  Serial.println(bootMessage);
-
-  // Wait a bit
-  delay(500);
-
   esp_send_debug_request(bootMessage);
-
-  esp_sleep();
 
   digitalWrite(OK_LED_PIN, LOW);
   digitalWrite(ERROR_LED_PIN, LOW);
@@ -444,8 +445,10 @@ void esp_send_debug_request(String message) {
   espState = ESP_STATE_AWAITING_RESULT;
   espRequestTime = get_timestamp();
 
+  Serial.print(F("Debug Request: "));
+  Serial.println(message);
+
   send_esp_serial(ESP_MSG_REQUEST, ("/debug.php?"+message).c_str());
-  delay(1);
 }
 
 void esp_sleep() {
@@ -473,13 +476,55 @@ void esp_reset() {
   pinMode(ESP_RESET_PIN, INPUT);
 }
 
+// bool serialCmdBuffering = false;
+// char serialCmdBuffer[12]; // 11 char max serial cmd can hold timestamp string + cmd
+// uint8_t serialCmdBufferIndex = 0;
+//
+// void handle_serial_command() {
+//   if (!serialCmdBufferIndex) {
+//     return;
+//   }
+//
+//   char commandData[10];
+//   //strcpy(commandData, serialCmdBuffer+1) = string(serialCmdBuffer).substr(1, serialCmdBufferIndex);
+//
+//   // New time
+//   if (strcmp((const char*)&serialCmdBuffer[0], "t")) {
+//     Serial.print("Set RTC To: ");
+//     Serial.println(commandData);
+//
+//     //RTC.adjust(DateTime((uint32_t)strtoul(commandData)));
+//   }
+// }
+//
+// void receive_serial_commands() {
+//   if (Serial.available()) {
+//     const char rxByte = Serial.read();
+//
+//     if (serialCmdBuffering) {
+//       serialCmdBuffer[serialCmdBufferIndex++] = rxByte;
+//
+//       if (serialCmdBufferIndex > sizeof(serialCmdBuffer)) {
+//         serialCmdBuffering = false;
+//         serialCmdBuffer[serialCmdBufferIndex++] = '\0';
+//         handle_serial_command();
+//         serialCmdBufferIndex = 0;
+//       }
+//     }
+//
+//     if (strcmp(&rxByte, "!") == 0) {
+//       serialCmdBuffering = !serialCmdBuffering;
+//     }
+//   }
+// }
+
 void loop() {
   wdt_reset();
 
   // If we're waiting for the esp to send the result of a http request
   if (espState == ESP_STATE_AWAITING_RESULT) {
     // If it replied and it's over the reset wait time
-    if (get_timestamp()-espRequestTime > ESP_RESPONSE_DELAY && mcp.digitalRead(MCP_ESP_RESULT_PIN)) {
+    if (get_timestamp()-espRequestTime > ESP_REQUEST_DELAY && mcp.digitalRead(MCP_ESP_RESULT_PIN)) {
       espState = ESP_STATE_IDLE;
 
       bool success = mcp.digitalRead(MCP_ESP_SUCCESS_PIN);
@@ -512,20 +557,24 @@ void loop() {
       // This'll start it again
       esp_reset();
     }
-  // If it was resetting and it's now pulled the pins low signifying it's awake
+  // If it was resetting
   } else if (espState == ESP_STATE_RESETTING) {
-      // If they're low and it's been an appropriate amount of time
-      if (
-        get_timestamp()-espResetTime > ESP_READY_DELAY &&
-        mcp.digitalRead(MCP_ESP_RESULT_PIN) == 0 &&
-        mcp.digitalRead(MCP_ESP_SUCCESS_PIN) == 0
-      ) {
+      // If it's now pulled the pins low signifying it's awake and it's been an appropriate amount of time
+      if (get_timestamp()-espResetTime > ESP_RESET_READY_DELAY &&
+          mcp.digitalRead(MCP_ESP_RESULT_PIN) == 0 &&
+          mcp.digitalRead(MCP_ESP_SUCCESS_PIN) == 0
+        ) {
         // Idle now, on next loop we can send it a command
         espState = ESP_STATE_IDLE;
+      // If it hasn't responded within the timeout it's probably frozen
+      } else if (get_timestamp()-espResetTime > ESP_RESET_TIMEOUT) {
+        DEBUG_PRINTLN("Esp reset timeout.");
+        // This'll start it again
+        esp_reset();
       }
   // ESP_STATE_IDLE
   } else if (espState == ESP_STATE_IDLE) {
-    // No timeout condition and results waiting for submission
+    // No timeout condition and if there are results waiting for submission
     if (submitTimeoutCountdown <= 0 && weatherReadingReadIndex != weatherReadingWriteIndex) {
       submit_reading();
     // Means we're not submitting so put it back to sleep
