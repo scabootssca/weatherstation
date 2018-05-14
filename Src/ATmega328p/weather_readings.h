@@ -161,7 +161,7 @@ void store_accumulator(WeatherReading *dest, WeatherReadingAccumulator src) {
 	// Serial.print(F("Avg Wind Degrees: "));
 	// Serial.println(dest->windDirection);
 
-	dest->rain = src.rain/float(src.numSamples);
+	dest->rain = src.rain;//float(src.numSamples);
 	dest->lux = src.lux/float(src.numSamples);
 }
 
