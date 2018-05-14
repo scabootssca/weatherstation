@@ -58,6 +58,12 @@ READINGS:
 #define ANEMOMETER_CALIBRATION_COEF 0.09739260404185239 // 10.2677201193868 = revolutions per 1mph
 #define ANEMOMETER_TDELTA_1_MPH 2921.778121255 // (60/10.2677201193868)*0.5 = Tdelta in samples per 1mph (For millis) 2 samples per revolution
 
+// I2c Addresses
+//0x68 == RTC
+//0x76 == BME280
+//0x20 == MCP23008
+//0x23 == BH1730 Lux
+
 // Pins
 #define OK_LED_PIN 9     // PB1
 #define ERROR_LED_PIN 10 // PB2
