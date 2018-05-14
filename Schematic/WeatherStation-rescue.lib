@@ -1,0 +1,24 @@
+EESchema-LIBRARY Version 2.3
+#encoding utf-8
+#
+# TL1431AIZT-RESCUE-WeatherStation
+#
+DEF TL1431AIZT-RESCUE-WeatherStation D 0 20 N N 1 F N
+F0 "D" -100 100 50 H V C CNN
+F1 "TL1431AIZT-RESCUE-WeatherStation" 0 -100 50 H V C CNN
+F2 "Package_TO_SOT_THT:TO-92_Inline" 0 -200 50 H I C CIN
+F3 "/home/scabootssca/Documents/Electrical and Circuits/Datasheets/Vref ADJ en.CD00001246.pdf" 0 -300 50 H I C CIN
+$FPLIST
+ TO*92*
+$ENDFPLIST
+DRAW
+P 3 0 1 0 -50 0 0 0 50 0 N
+P 3 0 1 0 -30 30 30 0 -30 -30 F
+P 4 0 1 10 20 -40 30 -30 30 30 30 30 N
+X REF 1 0 100 100 D 50 50 1 1 P
+X A 2 -100 0 100 R 50 50 1 1 P
+X K 3 100 0 100 L 50 50 1 1 P
+ENDDRAW
+ENDDEF
+#
+#End Library

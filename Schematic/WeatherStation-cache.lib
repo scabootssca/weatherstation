@@ -1,35 +1,6 @@
 EESchema-LIBRARY Version 2.3
 #encoding utf-8
 #
-# +BATT
-#
-DEF +BATT #PWR 0 0 Y Y 1 F P
-F0 "#PWR" 0 -150 50 H I C CNN
-F1 "+BATT" 0 140 50 H V C CNN
-F2 "" 0 0 50 H I C CNN
-F3 "" 0 0 50 H I C CNN
-DRAW
-P 2 0 1 0 -30 50 0 100 N
-P 2 0 1 0 0 0 0 100 N
-P 2 0 1 0 0 100 30 50 N
-X +BATT 1 0 0 0 U 50 50 1 1 W N
-ENDDRAW
-ENDDEF
-#
-# -BATT
-#
-DEF -BATT #PWR 0 0 Y Y 1 F P
-F0 "#PWR" 0 -150 50 H I C CNN
-F1 "-BATT" 0 140 50 H V C CNN
-F2 "" 0 0 50 H I C CNN
-F3 "" 0 0 50 H I C CNN
-DRAW
-P 2 0 1 0 0 0 0 100 N
-P 4 0 1 0 30 50 -30 50 0 100 30 50 F
-X -BATT 1 0 0 0 U 50 50 1 1 W N
-ENDDRAW
-ENDDEF
-#
 # 23LC1024
 #
 DEF 23LC1024 U 0 40 Y Y 1 F N
@@ -155,7 +126,7 @@ F1 "CP" 25 -100 50 H V L CNN
 F2 "" 38 -150 50 H I C CNN
 F3 "" 0 0 50 H I C CNN
 $FPLIST
- *:CP_*
+ CP_*
 $ENDFPLIST
 DRAW
 S -90 20 -90 40 0 1 0 N
@@ -216,7 +187,12 @@ F1 "Conn_01x02" 0 -200 50 H V C CNN
 F2 "" 0 0 50 H I C CNN
 F3 "" 0 0 50 H I C CNN
 $FPLIST
- Connector*:*_1x??_*
+ Connector*:*_??x*mm*
+ Connector*:*1x??x*mm*
+ Pin?Header?Straight?1X*
+ Pin?Header?Angled?1X*
+ Socket?Strip?Straight?1X*
+ Socket?Strip?Angled?1X*
 $ENDFPLIST
 DRAW
 S -50 -95 0 -105 1 1 6 N
@@ -247,6 +223,102 @@ X Pin_1 1 -200 100 150 R 50 50 1 1 P
 X Pin_2 2 -200 0 150 R 50 50 1 1 P
 X Pin_3 3 -200 -100 150 R 50 50 1 1 P
 X Pin_4 4 -200 -200 150 R 50 50 1 1 P
+ENDDRAW
+ENDDEF
+#
+# Conn_01x05
+#
+DEF Conn_01x05 J 0 40 Y N 1 F N
+F0 "J" 0 300 50 H V C CNN
+F1 "Conn_01x05" 0 -300 50 H V C CNN
+F2 "" 0 0 50 H I C CNN
+F3 "" 0 0 50 H I C CNN
+$FPLIST
+ Connector*:*_??x*mm*
+ Connector*:*1x??x*mm*
+ Pin?Header?Straight?1X*
+ Pin?Header?Angled?1X*
+ Socket?Strip?Straight?1X*
+ Socket?Strip?Angled?1X*
+$ENDFPLIST
+DRAW
+S -50 -195 0 -205 1 1 6 N
+S -50 -95 0 -105 1 1 6 N
+S -50 5 0 -5 1 1 6 N
+S -50 105 0 95 1 1 6 N
+S -50 205 0 195 1 1 6 N
+S -50 250 50 -250 1 1 10 f
+X Pin_1 1 -200 200 150 R 50 50 1 1 P
+X Pin_2 2 -200 100 150 R 50 50 1 1 P
+X Pin_3 3 -200 0 150 R 50 50 1 1 P
+X Pin_4 4 -200 -100 150 R 50 50 1 1 P
+X Pin_5 5 -200 -200 150 R 50 50 1 1 P
+ENDDRAW
+ENDDEF
+#
+# Conn_01x06
+#
+DEF Conn_01x06 J 0 40 Y N 1 F N
+F0 "J" 0 300 50 H V C CNN
+F1 "Conn_01x06" 0 -400 50 H V C CNN
+F2 "" 0 0 50 H I C CNN
+F3 "" 0 0 50 H I C CNN
+$FPLIST
+ Connector*:*_??x*mm*
+ Connector*:*1x??x*mm*
+ Pin?Header?Straight?1X*
+ Pin?Header?Angled?1X*
+ Socket?Strip?Straight?1X*
+ Socket?Strip?Angled?1X*
+$ENDFPLIST
+DRAW
+S -50 -295 0 -305 1 1 6 N
+S -50 -195 0 -205 1 1 6 N
+S -50 -95 0 -105 1 1 6 N
+S -50 5 0 -5 1 1 6 N
+S -50 105 0 95 1 1 6 N
+S -50 205 0 195 1 1 6 N
+S -50 250 50 -350 1 1 10 f
+X Pin_1 1 -200 200 150 R 50 50 1 1 P
+X Pin_2 2 -200 100 150 R 50 50 1 1 P
+X Pin_3 3 -200 0 150 R 50 50 1 1 P
+X Pin_4 4 -200 -100 150 R 50 50 1 1 P
+X Pin_5 5 -200 -200 150 R 50 50 1 1 P
+X Pin_6 6 -200 -300 150 R 50 50 1 1 P
+ENDDRAW
+ENDDEF
+#
+# Conn_01x07
+#
+DEF Conn_01x07 J 0 40 Y N 1 F N
+F0 "J" 0 400 50 H V C CNN
+F1 "Conn_01x07" 0 -400 50 H V C CNN
+F2 "" 0 0 50 H I C CNN
+F3 "" 0 0 50 H I C CNN
+$FPLIST
+ Connector*:*_??x*mm*
+ Connector*:*1x??x*mm*
+ Pin?Header?Straight?1X*
+ Pin?Header?Angled?1X*
+ Socket?Strip?Straight?1X*
+ Socket?Strip?Angled?1X*
+$ENDFPLIST
+DRAW
+S -50 -295 0 -305 1 1 6 N
+S -50 -195 0 -205 1 1 6 N
+S -50 -95 0 -105 1 1 6 N
+S -50 5 0 -5 1 1 6 N
+S -50 105 0 95 1 1 6 N
+S -50 205 0 195 1 1 6 N
+S -50 305 0 295 1 1 6 N
+S -50 350 50 -350 1 1 10 f
+X Pin_1 1 -200 300 150 R 50 50 1 1 P
+X Pin_2 2 -200 200 150 R 50 50 1 1 P
+X Pin_3 3 -200 100 150 R 50 50 1 1 P
+X Pin_4 4 -200 0 150 R 50 50 1 1 P
+X Pin_5 5 -200 -100 150 R 50 50 1 1 P
+X Pin_6 6 -200 -200 150 R 50 50 1 1 P
+X Pin_7 7 -200 -300 150 R 50 50 1 1 P
 ENDDRAW
 ENDDEF
 #
@@ -371,6 +443,22 @@ X GND 1 0 0 0 D 50 50 1 1 W N
 ENDDRAW
 ENDDEF
 #
+# Jumper
+#
+DEF Jumper JP 0 30 Y N 1 F N
+F0 "JP" 0 150 50 H V C CNN
+F1 "Jumper" 0 -80 50 H V C CNN
+F2 "" 0 0 50 H I C CNN
+F3 "" 0 0 50 H I C CNN
+DRAW
+A 0 -26 125 1426 373 0 1 0 N -98 50 99 50
+C -100 0 35 0 1 0 N
+C 100 0 35 0 1 0 N
+X 1 1 -300 0 165 R 50 50 0 1 P
+X 2 2 300 0 165 L 50 50 0 1 P
+ENDDRAW
+ENDDEF
+#
 # LED
 #
 DEF LED D 0 40 Y N 1 F N
@@ -455,7 +543,7 @@ F1 "NodeMCU_1.0_(ESP-12E)" 0 -850 60 H V C CNN
 F2 "" -600 -850 60 H V C CNN
 F3 "" -600 -850 60 H V C CNN
 DRAW
-S -600 -900 600 900 0 1 0 N
+S -600 -900 600 900 0 1 0 f
 X A0(ADC0) 1 -800 700 200 R 50 50 1 1 I
 X RSV 2 -800 600 200 R 50 50 1 1 I
 X RSV 3 -800 500 200 R 50 50 1 1 I
@@ -589,26 +677,26 @@ ENDDEF
 # TC4056A_BASED_CHARGER
 #
 DEF TC4056A_BASED_CHARGER U 0 40 Y Y 1 F N
-F0 "U" 0 300 60 H V C CNN
-F1 "TC4056A_BASED_CHARGER" 0 -50 60 H V C CNN
-F2 "" 0 0 60 H I C CNN
-F3 "" 0 0 60 H I C CNN
+F0 "U" -50 400 60 H V C CNN
+F1 "TC4056A_BASED_CHARGER" -50 -50 60 H V C CNN
+F2 "" -50 0 60 H I C CNN
+F3 "" -50 0 60 H I C CNN
 DRAW
-S -250 250 250 -350 0 1 0 f
-X B+ 1 -100 -550 200 U 50 50 1 1 I
-X B- 2 100 -550 200 U 50 50 1 1 I
-X Vout+ 3 -200 -550 200 U 50 50 1 1 I
-X Vout- 4 200 -550 200 U 50 50 1 1 I
-X Vin+ 5 -150 450 200 D 50 50 1 1 I
-X Vin- 6 150 450 200 D 50 50 1 1 I
+S -300 400 300 -400 0 1 0 f
+X B+ 1 150 -600 200 U 50 50 1 1 I
+X B- 2 -150 -600 200 U 50 50 1 1 I
+X Vout+ 3 250 -600 200 U 50 50 1 1 I
+X Vout- 4 -250 -600 200 U 50 50 1 1 I
+X Vin+ 5 250 600 200 D 50 50 1 1 I
+X Vin- 6 -250 600 200 D 50 50 1 1 I
 ENDDRAW
 ENDDEF
 #
-# TL1431AIZT
+# TL1431AIZT-RESCUE-WeatherStation
 #
-DEF TL1431AIZT D 0 20 N N 1 F N
+DEF TL1431AIZT-RESCUE-WeatherStation D 0 20 N N 1 F N
 F0 "D" -100 100 50 H V C CNN
-F1 "TL1431AIZT" 0 -100 50 H V C CNN
+F1 "TL1431AIZT-RESCUE-WeatherStation" 0 -100 50 H V C CNN
 F2 "Package_TO_SOT_THT:TO-92_Inline" 0 -200 50 H I C CIN
 F3 "/home/scabootssca/Documents/Electrical and Circuits/Datasheets/Vref ADJ en.CD00001246.pdf" 0 -300 50 H I C CIN
 $FPLIST
