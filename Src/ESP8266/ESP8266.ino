@@ -154,6 +154,8 @@ void loop() {
       digitalWrite(RESULT_PIN, HIGH);
     } else if (ATmegaSerialCommand == ESP_MSG_SLEEP) {
       Serial.println("Recieved Sleep Command; Sleeping Now.");
+      digitalWrite(RESULT_PIN, LOW);
+      digitalWrite(SUCCESS_PIN, LOW);
       delay(50);
       ESP.deepSleep(0);
     }
@@ -216,7 +218,7 @@ bool send_request(char *url) {
 
   while (client.available()) {
     yield();
-    
+
     // It seems that readStringUntil blocks if it doesn't find the char again
     String line = client.readStringUntil('\n');
 
