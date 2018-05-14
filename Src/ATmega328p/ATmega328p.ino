@@ -84,9 +84,9 @@ READINGS:
 #define MCP_ESP_RESULT_PIN 0
 #define MCP_ESP_SUCCESS_PIN 1
 
-#define MCP_SOLAR_ENABLE_PIN 5
-#define MCP_REFV_ENABLE_PIN 6
-#define MCP_BAT_DIV_ENABLE_PIN 7
+#define MCP_SOLAR_ENABLE_PIN 5   // Biased High On, Pull Low To Disable
+#define MCP_REFV_ENABLE_PIN 6    // Biased High Off, Pull Low To Enable
+#define MCP_BAT_DIV_ENABLE_PIN 7 // Biased Low Off, Pull High To Enable
 
 // Includes
 #include <limits.h>
@@ -761,7 +761,7 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
   DEBUG2_PRINT(channel);
 
   // Oversample for 10 -> 10+oversampleBits bit adc resolution
-  // 4^additionalBits
+  // 4^additionalBits (Expensive)
   int numSamples = (int)pow(4.0, oversampleBits);
 
   // DEBUG2_PRINT(F(" # Samples: "));
@@ -775,7 +775,7 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
 	int referencePinMv = 2500;
 
 	mcp.digitalWrite(MCP_REFV_ENABLE_PIN, LOW);
-	delay(10); // For refV to stabilize
+	delay(10); // For refV to stabilize (Sometimes it doesn't, maybe it needs to delay a bit more. Need to figure the time the ref takes to stabilize)
 
 	// Select what we want
 	analogRead(REF_ADC_PIN);
