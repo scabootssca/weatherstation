@@ -112,6 +112,7 @@ READINGS:
 uint32_t bootTime;
 
 bool bmeConnected = false;
+bool luxConnected = false;
 
 unsigned long lastSampleMillis = 0;
 
@@ -355,6 +356,7 @@ void setup() {
 
   // Lux Sensor (BH1750)
   luxMeter.begin(BH1750_ONE_TIME_HIGH_RES_MODE); // One shot then sleep
+  luxConnected = true;
 
   DEBUG_PRINTLN("7"); // Lux meter DONE
 
@@ -995,6 +997,10 @@ float read_battery_voltage(int oversampleBits=1) {
 }
 
 uint16_t read_lux() {
+  if (!luxConnected) {
+    return 0;
+  }
+
   luxMeter.begin(BH1750_ONE_TIME_HIGH_RES_MODE); // One shot then sleep
   return luxMeter.readLightLevel();
 }
