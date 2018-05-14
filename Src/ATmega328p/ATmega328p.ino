@@ -65,6 +65,7 @@ READINGS:
 #define MISO_PIN 12      // PB4
 #define SCK_PIN 13       // PB5
 
+#define ESP_RESET_PIN A0      // PC0
 #define WIND_VANE_ADC_PIN A1 // PC1
 #define BAT_ADC_PIN A2       // PC2
 #define REF_ADC_PIN A3       // PC3
@@ -73,7 +74,7 @@ READINGS:
 
 #define RAIN_BUCKET_PIN 2    // PD2
 #define ANEMOMETER_PIN 3     // PD3
-#define ESP_RESET_PIN 4      // PD4
+//#define ESP_RESET_PIN 4      // PD4
 #define ESP_TX_PIN 5         // PD5
 #define ESP_RX_PIN 6         // PD6
 #define SRAM_CS_PIN 7        // PD7
