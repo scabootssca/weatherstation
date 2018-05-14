@@ -216,6 +216,17 @@ void I2C::countError(uint8_t i2cAddr, uint8_t addr, uint8_t returnCode, uint8_t 
   Serial.print(returnCode);
   Serial.print(" ");
   Serial.print(i2cAddr, HEX);
+
+  if (i2cAddr == 0x68) {
+    Serial.print(":RTC");
+  } else if (i2cAddr == 0x76) {
+    Serial.print(":BME");
+  } else if (i2cAddr == 0x20) {
+    Serial.print(":MCP");
+  } else if (i2cAddr == 0x23) {
+    Serial.print(":LUX");
+  }
+
   Serial.print(F("@"));
   Serial.print(addr);
   Serial.print(F(" -> "));
