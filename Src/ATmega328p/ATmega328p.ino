@@ -786,7 +786,7 @@ float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampl
 	int referencePinMv = 2500;
 
 	mcp.digitalWrite(MCP_REFV_ENABLE_PIN, LOW);
-	delay(10); // For refV to stabilize (Sometimes it doesn't, maybe it needs to delay a bit more. Need to figure the time the ref takes to stabilize)
+	delay(50); // For refV to stabilize (Sometimes it doesn't, maybe it needs to delay a bit more. Need to figure the time the ref takes to stabilize)
 
 	// Select what we want
 	analogRead(REF_ADC_PIN);
