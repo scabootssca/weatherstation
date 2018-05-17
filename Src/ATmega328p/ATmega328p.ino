@@ -71,28 +71,27 @@ READINGS:
 #define MISO_PIN 12      // PB4
 #define SCK_PIN 13       // PB5
 
-#define ESP_RESET_PIN A0      // PC0
 #define WIND_VANE_ADC_PIN A1 // PC1
-#define BAT_ADC_PIN A2       // PC2
-#define REF_ADC_PIN A3       // PC3
+#define REF_ADC_PIN A2       // PC2
+#define BAT_ADC_PIN A3       // PC3
 #define I2C_SDA_PIN A4       // PC4
 #define I2C_SCL_PIN A5       // PC5
 
 #define RAIN_BUCKET_PIN 2    // PD2
 #define ANEMOMETER_PIN 3     // PD3
-//#define ESP_RESET_PIN 4      // PD4
 #define ESP_TX_PIN 5         // PD5
 #define ESP_RX_PIN 6         // PD6
 #define SRAM_CS_PIN 7        // PD7
 
 
 // Mcp23008 pins
-#define MCP_ESP_RESULT_PIN 0
-#define MCP_ESP_SUCCESS_PIN 1
+#define MCP_ESP_RESULT_PIN 6
+#define MCP_ESP_SUCCESS_PIN 7
+#define MCP_ESP_RESET_PIN 5
 
-#define MCP_SOLAR_ENABLE_PIN 5   // Biased High On, Pull Low To Disable
-#define MCP_REFV_ENABLE_PIN 6    // Biased High Off, Pull Low To Enable
-#define MCP_BAT_DIV_ENABLE_PIN 7 // Biased Low Off, Pull High To Enable
+#define MCP_BAT_DIV_ENABLE_PIN 0 // Biased Low Off, Pull High To Enable
+#define MCP_REFV_ENABLE_PIN 1    // Biased High Off, Pull Low To Enable
+#define MCP_SOLAR_ENABLE_PIN 2   // Biased High On, Pull Low To Disable
 
 // Includes
 #include <limits.h>
