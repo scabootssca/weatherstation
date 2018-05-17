@@ -304,7 +304,7 @@ void setup() {
 
   DEBUG_PRINT("1."); // Esp Serial DONE
 
-  pinMode(ESP_RESET_PIN, INPUT); // Input while were not using it to not interfere with ESP programming
+  mcp.pinMode(MCP_ESP_RESET_PIN, INPUT); // Input while were not using it to not interfere with ESP programming
 
   // Indicator LEDS
   pinMode(OK_LED_PIN, OUTPUT);
@@ -476,16 +476,16 @@ void esp_reset() {
   espState = ESP_STATE_RESETTING;
   espResetTime = get_timestamp();
 
-  pinMode(ESP_RESET_PIN, OUTPUT);
+  mcp.pinMode(MCP_ESP_RESET_PIN, OUTPUT);
 
-  digitalWrite(ESP_RESET_PIN, LOW);
+  mcp.digitalWrite(MCP_ESP_RESET_PIN, LOW);
   delay(20);
-  digitalWrite(ESP_RESET_PIN, HIGH);
+  mcp.digitalWrite(MCP_ESP_RESET_PIN, HIGH);
   delay(20);
-  digitalWrite(ESP_RESET_PIN, LOW);
+  mcp.digitalWrite(MCP_ESP_RESET_PIN, LOW);
   delay(20);
 
-  pinMode(ESP_RESET_PIN, INPUT);
+  mcp.pinMode(MCP_ESP_RESET_PIN, INPUT);
 }
 
 // bool serialCmdBuffering = false;
