@@ -318,6 +318,13 @@ void setup() {
   DEBUG_PRINT(F("PORF: "));
   DEBUG_PRINTLN((mcusrBootValue>>PORF)&1);
 
+  // Set reference voltage pin proper
+  //Bits 7:6 – REFSn: Reference Selection [n = 1:0]
+  // 01 = AV CC with external capacitor at AREF pin
+  DEBUG_PRINT("Setting ADMUX: ");
+  ADMUX |= 0b01000000;
+  Serial.println(ADMUX, BIN);
+
   // Esp serial
   ESPSerial.begin(ESP_ATMEGA_BAUD_RATE);
   ESPSerial.setTimeout(500);
@@ -401,6 +408,7 @@ void setup() {
   bootTime = RTC.now().unixtime();
   Serial.print("Boot Time: ");
   print_pretty_timestamp(bootTime);
+  Serial.println();
 
   // SRAM init
   DEBUG_PRINTLN(F("Start SRAM"));
