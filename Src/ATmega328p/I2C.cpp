@@ -208,13 +208,15 @@ uint8_t I2C::receive()
   return(data[bufferIndex]);
 }
 
-void I2C::countError(uint8_t i2cAddr, uint8_t addr, uint8_t returnCode, uint8_t result)
+void I2C::countError(bool dir, uint8_t i2cAddr, uint8_t addr, uint8_t returnCode, uint8_t result)
 {
   numI2cErrors++;
 
-  Serial.print(F("I2c Error "));
+  Serial.print(F("I2c Error #"));
+  Serial.print(numI2cErrors);
+  Serial.print(" Code: ");
   Serial.print(returnCode);
-  Serial.print(" ");
+  Serial.print(" I2CAddr: ");
   Serial.print(i2cAddr, HEX);
 
   if (i2cAddr == 0x68) {
@@ -227,10 +229,17 @@ void I2C::countError(uint8_t i2cAddr, uint8_t addr, uint8_t returnCode, uint8_t 
     Serial.print(":LUX");
   }
 
-  Serial.print(F("@"));
+  Serial.print(dir==I2C_WRITE?" Write ":" Read");
+  Serial.print(F(" Register: "));
   Serial.print(addr);
-  Serial.print(F(" -> "));
+  Serial.print(F(" Result: "));
   Serial.println(result);
+
+  if (numI2cErrors > 2) {
+    Serial.println("(!) Reset I2C..");
+    extern bool init_i2c();
+    numI2cErrors = 0;
+  }
 }
 
 /*return values for new functions that use the timeOut feature

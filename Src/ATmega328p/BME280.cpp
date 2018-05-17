@@ -144,7 +144,7 @@ void Adafruit_BME280::write8(byte reg, byte value) {
         uint8_t returnCode = _wire -> write((uint8_t)_i2caddr, (uint8_t)reg, (uint8_t)value);
 
         if (returnCode != 0) {
-          I2c.countError(_i2caddr, reg, returnCode, 0);
+          I2c.countError(I2C_WRITE, _i2caddr, reg, returnCode, 0);
         }
         // _wire -> beginTransmission((uint8_t)_i2caddr);
         // _wire -> write((uint8_t)reg);
@@ -166,7 +166,7 @@ uint8_t Adafruit_BME280::read8(byte reg) {
         uint8_t returnCode = _wire -> read((uint8_t)_i2caddr, (uint8_t)reg, uint8_t(1));
 
         if (returnCode != 0) {
-          I2c.countError(_i2caddr, reg, returnCode, 0);
+          I2c.countError(I2C_READ, _i2caddr, reg, returnCode, 0);
         }
 
         value = _wire -> receive();
@@ -195,7 +195,7 @@ uint16_t Adafruit_BME280::read16(byte reg)
         uint8_t returnCode = _wire -> read((uint8_t)_i2caddr, (uint8_t)reg, uint8_t(2));
 
         if (returnCode != 0) {
-          I2c.countError(_i2caddr, reg, returnCode, 0);
+          I2c.countError(I2C_READ, _i2caddr, reg, returnCode, 0);
         }
 
         value = (_wire -> receive() << 8) | _wire -> receive();
@@ -256,7 +256,7 @@ uint32_t Adafruit_BME280::read24(byte reg)
         uint8_t returnCode = _wire -> read((uint8_t)_i2caddr, (uint8_t)reg, uint8_t(3));
 
         if (returnCode != 0) {
-          I2c.countError(_i2caddr, reg, returnCode, 0);
+          I2c.countError(I2C_READ, _i2caddr, reg, returnCode, 0);
         }
 
         value = _wire -> receive();

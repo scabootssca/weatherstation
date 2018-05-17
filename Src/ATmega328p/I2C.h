@@ -64,6 +64,8 @@
 #ifndef I2C_h
 #define I2C_h
 
+#define I2C_WRITE 0
+#define I2C_READ 1
 
 #define START           0x08
 #define REPEATED_START  0x10
@@ -97,7 +99,7 @@ class I2C
     void setSpeed(uint8_t);
     void pullup(uint8_t);
     void scan();
-    void countError(uint8_t, uint8_t, uint8_t, uint8_t);
+    void countError(bool, uint8_t, uint8_t, uint8_t, uint8_t);
     uint8_t available();
     uint8_t receive();
     uint8_t write(uint8_t, uint8_t);

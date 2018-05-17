@@ -65,7 +65,7 @@ uint16_t BH1750::readLightLevel(void) {
   level |= I2c.receive();
 
   if (returnCode != 0) {
-    I2c.countError(BH1750_I2CADDR, 0, returnCode, 0);
+    I2c.countError(I2C_READ, BH1750_I2CADDR, 0, returnCode, 0);
   }
 
 // #if (ARDUINO >= 100)
