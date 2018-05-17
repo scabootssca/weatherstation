@@ -240,23 +240,43 @@ void init_bme() {
 bool init_i2c() {
   I2c.end();
 
-  // Reset I2c Bus with 9 clock pulses as per specs
+  // Both to input to check their status
   pinMode(I2C_SDA_PIN, INPUT);
-  pinMode(I2C_SCL_PIN, OUTPUT);
-
-  for (int i=0; i<18; i++) {
-    digitalWrite(I2C_SCL_PIN, i?HIGH:LOW);
-  }
-
   pinMode(I2C_SCL_PIN, INPUT);
 
+  Serial.print("Reset I2C - SDA: ");
+  Serial.print(digitalRead(I2C_SDA_PIN));
+  Serial.print(" SCL: ");
+  Serial.print(digitalRead(I2C_SCL_PIN));
+  Serial.println();
+
+  // Hold sda low while we pulse the clock
+  pinMode(I2C_SDA_PIN, OUTPUT);
+  digitalWrite(I2C_SDA_PIN, LOW);
+
+  // Reset I2c Bus with 16 clock pulses as per specs
+  pinMode(I2C_SCL_PIN, OUTPUT);
+
+  for (int i=0; i<16; i++) {
+    digitalWrite(I2C_SCL_PIN, i?HIGH:LOW);
+    delay(1);
+  }
+
+  // Then a stop by raising scl then sda
+  pinMode(I2C_SCL_PIN, INPUT);
+  pinMode(I2C_SDA_PIN, INPUT);
+
+  // See if its good
   // If either is low then it may still be stuck
   if (!digitalRead(I2C_SCL_PIN) || !digitalRead(I2C_SDA_PIN)) {
     esp_send_debug_request("I2C_Stuck");
+    return false;
   }
 
   I2c.begin();
   I2c.timeOut(I2C_TIMEOUT_MS);
+
+  return true;
 }
 
 void setup() {
