@@ -28,6 +28,7 @@ READINGS:
 #include <avr/wdt.h>
 #define WD_TIMEOUT WDTO_8S
 #define I2C_TIMEOUT_MS 2000
+#define VERSION "Version: 0eba866caa821bdc40ec685b2c2e5a583804624d Mon May 14 15:13:45 2018 -0500"
 
 #define CLEAN_START 0 // This will mark SRAM as unpopulated and update rtc to compile time
 #define UPLOAD_TIME_OFFSET 0//53
@@ -273,7 +274,10 @@ void setup() {
   Serial.begin(19200);
   Serial.setTimeout(500);
 
-  DEBUG_PRINT(F("\n\nInitilizing"));
+  DEBUG_PRINT(F("\n\nInitilizing "));
+  DEBUG_PRINTLN(F(VERSION));
+  DEBUG_PRINT("Compiled: ");
+  DEBUG_PRINTLN(__DATE__);
 
   for (int i=0; i<10; i++) {
     DEBUG_PRINT(F("."));
