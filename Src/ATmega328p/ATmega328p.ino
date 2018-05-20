@@ -793,71 +793,62 @@ void submit_reading() {
   send_esp_serial(ESP_MSG_REQUEST, outputUrl.c_str());
 }
 
-float readADCVoltage(int channel=0, float ratio=1.0, int offset=0, int oversampleBits=0) {
-  wdt_reset();
+int readADC(int channel=0, int oversampleBits=2) {
+  Serial.print("ADC Channel ");
+  Serial.println(channel);
 
-  DEBUG2_PRINT(F("ADC channel: "));
-  DEBUG2_PRINT(channel);
+  analogRead(channel);
+  delay(1);
 
   // Oversample for 10 -> 10+oversampleBits bit adc resolution
   // 4^additionalBits (Expensive)
-  int numSamples = (int)pow(4.0, oversampleBits);
+  short numSamples = (int)pow(4.0, oversampleBits);
+  unsigned int adcAccumulator = 0;
 
-  // DEBUG2_PRINT(F(" # Samples: "));
-  // DEBUG2_PRINT(numSamples);
+  int reading = 0;
+  for (int i=0; i<numSamples; i++) {
+    adcAccumulator += analogRead(channel);
+    delay(1);
+  }
 
-	float refPinReading = 0.0;
-	float channelPinReading = 0.0;
+  return int(adcAccumulator/(float)numSamples);
+}
+
+float readADCVoltage(int channel=0, float ratio=1.0, int offset=0) {
+  wdt_reset();
 
 	// Get the vcc mV
 	//////////////////////////////
-	int referencePinMv = 2500;
+	int referencePinMv = 2465; // Instead of 2500 as measured
 
 	mcp.digitalWrite(MCP_REFV_ENABLE_PIN, LOW);
-	delay(50); // For refV to stabilize (Sometimes it doesn't, maybe it needs to delay a bit more. Need to figure the time the ref takes to stabilize)
+	delay(1); // For refV to stabilize
 
-	// Select what we want
-	analogRead(REF_ADC_PIN);
-  delay(5);
-
-	for (int i=0; i<numSamples; i++) {
-		refPinReading += analogRead(REF_ADC_PIN);
-    yield();
-	}
-
-	refPinReading /= numSamples;
-
-  DEBUG2_PRINT(F(" refPin: "));
-  DEBUG2_PRINT(refPinReading);
+	float refPinReading  = readADC(REF_ADC_PIN);
 
 	mcp.digitalWrite(MCP_REFV_ENABLE_PIN, HIGH);
 
-	float vccMv = ( referencePinMv / refPinReading ) * 1023;
-
 	// Get the channel mV
 	//////////////////////////////
-	analogRead(channel);
-  delay(5);
+	float channelPinReading = readADC(channel);
 
-	for (int i=0; i<numSamples; i++) {
-		channelPinReading += analogRead(channel);
-    yield();
-	}
-
-	channelPinReading /= numSamples;
-
-  DEBUG2_PRINT(F(" channelPin: "));
-  DEBUG2_PRINT(channelPinReading);
-
+  float vccMv = (1023.0 / refPinReading) * referencePinMv;
   float pinMv = (vccMv / 1023.0) * channelPinReading;
 	float readingMv = pinMv * ratio;
 
-	DEBUG2_PRINT(F(" vccMv: "));
+  DEBUG2_PRINT(F("ADC channel: "));
+  DEBUG2_PRINT(channel);
+  DEBUG2_PRINT(F(" refPin: "));
+  DEBUG2_PRINT(refPinReading);
+  DEBUG2_PRINT(F(" vccMv: "));
 	DEBUG2_PRINT(vccMv);
-	// DEBUG2_PRINT(F(" pinMv: "));
-	// DEBUG2_PRINT(pinMv);
-  // DEBUG2_PRINT(F(" readingMv: "));
-  // DEBUG2_PRINT(readingMv);
+
+  DEBUG2_PRINT(F(" channelPin: "));
+  DEBUG2_PRINT(channelPinReading);
+	DEBUG2_PRINT(F(" pinMv: "));
+	DEBUG2_PRINT(pinMv);
+  DEBUG2_PRINT(F(" readingMv: "));
+  DEBUG2_PRINT(readingMv);
 	DEBUG2_PRINT(F(" resultMv: "));
 	DEBUG2_PRINTLN(readingMv+offset);
 
@@ -990,14 +981,11 @@ int read_rain() {
   rainBucketPulses = 0;
   sei();
 
-  DEBUG3_PRINT("Num rain pulses: ");
-  DEBUG3_PRINTLN(numTimelyPulses);
-
   return numTimelyPulses;
 }
 
 void read_wind_vane(float *destX, float *destY) {
-  int windDegrees = map(analogRead(WIND_VANE_ADC_PIN), WIND_VANE_MIN, WIND_VANE_MAX, 0, 360);
+  int windDegrees = map((int)readADC(WIND_VANE_ADC_PIN), WIND_VANE_MIN, WIND_VANE_MAX, 0, 360);
   float windRadians = windDegrees * M_PI / 180;
 
   *destY += sin(windRadians);
@@ -1007,9 +995,7 @@ void read_wind_vane(float *destX, float *destY) {
   // DEBUG3_PRINTLN(windDegrees);
 }
 
-float read_battery_voltage(int oversampleBits=1) {
-  Serial.println("Read Bat: ");
-
+float read_battery_voltage() {
   //1.33511348465; // R2/R1 3.008/1.002
   float dividerRatio = 1.335;
 
@@ -1019,10 +1005,10 @@ float read_battery_voltage(int oversampleBits=1) {
 
   // Switch on the voltage divider for the battery and charge the cap and stabilize reference voltage
   mcp.digitalWrite(MCP_BAT_DIV_ENABLE_PIN, HIGH);
-  delay(20); // Wait a bit
+  delay(10); // Wait a bit
 
   // Voltage afterwards
-	float batteryVoltage = readADCVoltage(BAT_ADC_PIN, dividerRatio, 15, oversampleBits);
+	float batteryVoltage = readADCVoltage(BAT_ADC_PIN, dividerRatio);
 
   // Turn the divider back off
   mcp.digitalWrite(MCP_BAT_DIV_ENABLE_PIN, LOW);
