@@ -1090,6 +1090,12 @@ void take_sample() {
 
   sampleAccumulator.timestamp = get_timestamp();
 
+  // Battery
+  if (sampleAccumulator.numSamples%BATTERY_SAMPLE_MODULO == 0){
+    sampleAccumulator.batteryMv += int32_t(read_battery_voltage()*100);
+    sampleAccumulator.numBatterySamples++;
+  }
+
   // Wind
   read_anemometer();
   read_anemometer_gust();
@@ -1097,12 +1103,6 @@ void take_sample() {
 
   // Rain
   sampleAccumulator.rain += read_rain();
-
-  // Battery
-  if (sampleAccumulator.numSamples%BATTERY_SAMPLE_MODULO == 0){
-    sampleAccumulator.batteryMv += int32_t(read_battery_voltage()*100);
-    sampleAccumulator.numBatterySamples++;
-  }
 
   // Humidity, Temperature, Pressure
   if (bmeConnected)
