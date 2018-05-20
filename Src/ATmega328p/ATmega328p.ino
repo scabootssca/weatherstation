@@ -26,9 +26,11 @@ READINGS:
 
 */
 #include <avr/wdt.h>
+#include "git-version.h"
+
 #define WD_TIMEOUT WDTO_8S
 #define I2C_TIMEOUT_MS 2000
-#define VERSION "Version: 0eba866caa821bdc40ec685b2c2e5a583804624d Mon May 14 15:13:45 2018 -0500"
+#define VERSION "v0.1"
 
 #define CLEAN_START 0 // This will mark SRAM as unpopulated and update rtc to compile time
 #define UPLOAD_TIME_OFFSET 0//53
@@ -295,6 +297,7 @@ void setup() {
   Serial.setTimeout(500);
 
   DEBUG_PRINT(F("\n\nInitilizing "));
+  DEBUG_PRINT(F(GIT_VERSION));
   DEBUG_PRINTLN(F(VERSION));
   DEBUG_PRINT("Compiled: ");
   DEBUG_PRINTLN(__DATE__);
