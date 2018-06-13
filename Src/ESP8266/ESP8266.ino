@@ -1,5 +1,6 @@
 #include <ESP8266WiFi.h>
 #include "SoftwareSerial.h"
+#include <ESP8266WebServer.h>
 //#include "SPISlave.h"
 #include <Wire.h>
 #define I2CAddressESPWifi 8
@@ -24,9 +25,16 @@ int ATmegaSerialIndex = 0;
 #define STATE_RECIEVING 3
 #define STATE_FINISHED 4
 
+#define REQUEST_TIMEOUT_MS 45000
+#define CONNECT_TIMEOUT_MS 30000
+#define WIFI_CLIENT_TIMEOUT_MS 30000
+
 int ATmegaSerialState = STATE_WAIT;
 char ATmegaSerialCommand = 0;
 char ATmegaSerialLength = 0;
+
+#define DEBUG_PIN D7
+bool debugMode = false;
 //
 // void on_spi_data(uint8_t *data, size_t len) {
 //   String message = String((char *)data);
@@ -71,35 +79,137 @@ char ATmegaSerialLength = 0;
 //   SPISlave.setData("Ask me a question!");
 // }
 
+struct NetworkInfo {
+  char ssid[100];
+  int rssi;
+  bool open;
+};
+
+unsigned short numDetectedNetworks = 0;
+NetworkInfo *detectedNetworks;
+const char *hostedSSID = "WeatherStation_AP";
+IPAddress apIP(192, 168, 1, 1);
+ESP8266WebServer server(80);
+
+void scan_networks() {
+  // Set WiFi to station mode and disconnect from an AP if it was previously connected
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(100);
+
+  if (numDetectedNetworks) {
+    free(detectedNetworks);
+  }
+
+  // WiFi.scanNetworks will return the number of networks found
+  numDetectedNetworks = WiFi.scanNetworks();
+  Serial.println("scan done");
+
+
+  Serial.print(numDetectedNetworks);
+  Serial.println(" networks found");
+
+  if (numDetectedNetworks) {
+      detectedNetworks = (NetworkInfo*)malloc(sizeof(NetworkInfo)*numDetectedNetworks);
+
+      for (int i = 0; i < numDetectedNetworks; ++i) {
+        strcpy(detectedNetworks[i].ssid, WiFi.SSID(i).c_str());
+        detectedNetworks[i].rssi = WiFi.RSSI(i);
+        detectedNetworks[i].open = (WiFi.encryptionType(i) == ENC_TYPE_NONE);
+
+        Serial.print(detectedNetworks[i].ssid);
+        Serial.print(" ");
+        Serial.print(detectedNetworks[i].rssi);
+        Serial.print("dB [");
+        Serial.print(detectedNetworks[i].open?"open":"enc");
+        Serial.println("]");
+      }
+  }
+
+  Serial.println("");
+}
+
+void handleRoot() {
+  String response;
+
+  response += "<h1>Detected Networks</h1>";
+
+  for (int i=0; i<numDetectedNetworks; i++) {
+    response += i;
+    response += ". ";
+    response += detectedNetworks[i].ssid;
+    response += ": (";
+    response += detectedNetworks[i].rssi;
+    response += ")";
+    response += (detectedNetworks[i].open?" ":"*");
+    response += "<br>";
+  }
+
+	server.send(200, "text/html", response.c_str());
+}
+
 void setup()
 {
   Serial.begin(19200);
   Serial.setDebugOutput(true);
 
-  ATmegaSerial.begin(ESP_ATMEGA_BAUD_RATE);
-  // We print this to make the serial sync before the commands are sent
-  ATmegaSerial.println("......................");
+  // Debug functions
+  pinMode(DEBUG_PIN, INPUT);
+  debugMode = digitalRead(DEBUG_PIN);
 
   Serial.println(".......");
-  Serial.print("Initilizing ESP8266...........");
+  Serial.print("Finished: ");
+  Serial.println(debugMode?"Debug Mode":"Slave Mode");
 
-  //WiFi.setAutoConnect(false);
-  // WiFi.mode(WIFI_OFF);
-	// WiFi.persistent(false);
+  if (debugMode) {
+    // Set WiFi to station mode and disconnect from an AP if it was previously connected
+    scan_networks();
+    WiFi.disconnect();
+    WiFi.mode(WIFI_AP);
+    delay(100);
 
-  pinMode(RESULT_PIN, OUTPUT);
-  pinMode(SUCCESS_PIN, OUTPUT);
+    // Then setup as an ap
+    WiFi.softAPConfig(apIP, apIP, IPAddress(255, 255, 255, 0));
+    WiFi.softAP(hostedSSID);
+    Serial.println(WiFi.softAPIP());
 
-  digitalWrite(RESULT_PIN, LOW);
-  digitalWrite(SUCCESS_PIN, LOW);
-  //setup_spi_slave();
-  //
-  // Wire.begin(0, 2); //SDA, SCL, D3, D4//Change to Wire.begin() for non ESP.
+    server.on("/", handleRoot);
+    server.begin();
 
-  Serial.println("Finished");
+    Serial.println("Debug Server Started");
+  } else {
+    ATmegaSerial.begin(ESP_ATMEGA_BAUD_RATE);
+    // We print this to make the serial sync before the commands are sent
+    ATmegaSerial.println("......................");
+
+
+    Serial.print("Initilizing ESP8266...........");
+
+    //WiFi.setAutoConnect(false);
+    connect_to_wifi();
+  	// WiFi.persistent(false);
+
+    pinMode(RESULT_PIN, OUTPUT);
+    pinMode(SUCCESS_PIN, OUTPUT);
+
+    digitalWrite(RESULT_PIN, LOW);
+    digitalWrite(SUCCESS_PIN, LOW);
+    //setup_spi_slave();
+    //
+    // Wire.begin(0, 2); //SDA, SCL, D3, D4//Change to Wire.begin() for non ESP.
+  }
 }
 
 void loop() {
+  if (debugMode) {
+    server.handleClient();
+    yield();
+    return;
+  }
+
+  //ATmegaSerial.print("Balls\n");
+  //delay(500);
+
   if (ATmegaSerial.available()) {
     uint8_t rxByte = ATmegaSerial.read();
 
@@ -157,6 +267,7 @@ void loop() {
       digitalWrite(RESULT_PIN, LOW);
       digitalWrite(SUCCESS_PIN, LOW);
       delay(50);
+      disconnect_from_wifi();
       ESP.deepSleep(0);
     }
 
@@ -179,7 +290,7 @@ bool send_request(char *url) {
   }
 
   WiFiClient client;
-  client.setTimeout(1000);
+  client.setTimeout(WIFI_CLIENT_TIMEOUT_MS);
 
   Serial.print("[Connecting to ");
   Serial.print(SERVER_IP_ADDRESS);
@@ -205,7 +316,7 @@ bool send_request(char *url) {
 
   unsigned long timeout = millis();
   while (client.available() == 0) {
-    if (millis()-timeout > 5000) {
+    if (millis()-timeout > REQUEST_TIMEOUT_MS) {
       Serial.println("....Timed out [!]");
       client.stop();
       return false;
@@ -262,7 +373,7 @@ bool connect_to_wifi() {
     return false;
   }
 
-  int timeout = 30000;
+  int timeout = CONNECT_TIMEOUT_MS;
   while (WiFi.status() != WL_CONNECTED) {
     delay(1);
     timeout--;
@@ -278,6 +389,9 @@ bool connect_to_wifi() {
   }
 
   DEBUG_PRINTLN("Success]");
+
+  //WiFi.RSSI()
+
   return true;
 }
 
