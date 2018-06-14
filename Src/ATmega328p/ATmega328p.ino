@@ -187,7 +187,7 @@ unsigned int submitTimeoutCountdown = 0;
 #define REQ_FAIL_MAX_SUBMITS 3
 
 uint8_t requestFailReason = REQ_FAIL_NONE;
-uint8_t submitCountdown = 0;
+int submitCountdown = 0;
 
 // Structures/Classes
 Adafruit_MCP23008 mcp; // IO Expander
@@ -196,6 +196,78 @@ Adafruit_BME280 bmeSensor; // Termometer, Hygrometer, Barometer
 BH1750 luxMeter; // Lux
 
 SoftwareSerial ESPSerial(ESP_RX_PIN, ESP_TX_PIN);
+
+void new_do_submit() {
+  // If it's waking up
+  if (espState == ESP_STATE_RESETTING) {
+    // And it's had enough time to wake and it's pulled the pins low
+    if (
+        get_unixtime()-espResetTime > ESP_RESET_READY_DELAY &&
+        mcp.digitalRead(MCP_ESP_RESET_PIN) == 0 &&
+        mcp.digitalRead(MCP_ESP_SUCCESS_PIN) == 0
+      ) {
+      espState = ESP_STATE_IDLE;
+    // If it's been above the time and the pins are high then it's probably frozen
+    } else if (get_unixtime()-espResetTime > ESP_RESET_TIMEOUT) {
+      esp_reset();
+    }
+  }
+
+  // If the esp is idling then start submitting a result or put it to sleep
+  if (espState == ESP_STATE_IDLE) {
+    // If there's readings to submit then do that
+    if (weatherReadingReadIndex != weatherReadingWriteIndex) {
+      submit_reading();
+    // Else just sleep then
+    } else {
+      esp_sleep();
+    }
+  }
+
+  // If we're waiting for a result
+  if (espState == ESP_STATE_AWAITING_RESULT) {
+    // If it timed out then
+
+    // If we have a result
+    if (mcp.digitalRead(MCP_ESP_RESULT_PIN)) {
+      // Success
+      if (mcp.digitalRead(MCP_ESP_SUCCESS_PIN)) {
+
+      // Failure
+      } else {
+
+      }
+    }
+  }
+}
+/*
+Ready To Store Reading ->
+  If reading is enough unsubmitted to submit then wake esp
+
+Esp is Awake ->
+  Submitting Reading?
+    Result?
+      Good result?
+        Goto next reading
+      Else can still try?
+        Try again
+      Else:
+        Esp Sleeping, try later
+    Timed out?
+      Reset esp
+    Else:
+      Keep waiting
+  Readings to submit?
+    -> Submit Reading
+  Else:
+   Esp Sleep
+
+Esp is Waking?
+  -> Esp is Awake
+
+
+*/
+
 
 char ESPRecvBuffer[ESP_RECV_BUFFER_SIZE];
 short ESPRecvIndex = 0;
@@ -639,7 +711,6 @@ int readADC(int channel=0, int oversampleBits=2) {
 
 void loop() {
   delay(1);
-
   wdt_reset();
 
   // Get from the esp
@@ -672,8 +743,9 @@ void loop() {
         }
       }
 
-      // If we've submitted all or too many fails then put it back to sleep
+      // If we've submitted all the readings or had too many fails then put it back to sleep
       if (submitTimeoutCountdown > 0 || (weatherReadingReadIndex == weatherReadingWriteIndex)) {
+        submitCountdown = READINGS_BEFORE_SUBMIT;
         esp_sleep();
       }
 
@@ -707,6 +779,7 @@ void loop() {
       submit_reading();
     // Means we're not submitting so put it back to sleep
     } else {
+      submitCountdown = READINGS_BEFORE_SUBMIT;
       esp_sleep();
     }
   }
@@ -730,7 +803,7 @@ void loop() {
 
     #if DEBUG
     Serial.println();
-    Serial.print(F("--(WEATHER READING ("));
+    Serial.print(("--(WEATHER READING ("));
     Serial.print(weatherReadingWriteIndex);
     Serial.println("))--");
     printWeatherReading(currentReading);
@@ -754,6 +827,10 @@ void loop() {
       }
     }
 
+    if (submitCountdown > 0) {
+      submitCountdown -= 1;
+    }
+
     // This could potentially submit an invalid bme reading if it wasn't detected
     // for that reading and is now it'll submit invalid readings for the one that came before
     // Maybe have a bitflag set for the data for errors that occured during that reading
@@ -761,18 +838,11 @@ void loop() {
     if (!bmeConnected) {
       init_bme();
     }
+  }
 
-    // If we've had enough readings that we want it to submit them
-    // If the write index rolled over and read hasn't yet the result will be negative
-    // It will submit early on the first rollover because the result will be huge
-    // but thats ok and itll be good for another while after normal
-    if (abs(weatherReadingWriteIndex-weatherReadingReadIndex) > READINGS_BEFORE_SUBMIT) {
-
-      // Wake the esp if it's sleeping
-      if (espState == ESP_STATE_SLEEP) {
-        esp_reset();
-      }
-    }
+  // If we're ready to submit and the esp is sleeping then wake it
+  if (submitCountdown <= 0 && espState == ESP_STATE_SLEEP) {
+    esp_reset();
   }
 }
 
