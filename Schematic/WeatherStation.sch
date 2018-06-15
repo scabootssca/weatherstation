@@ -1049,36 +1049,14 @@ F 3 "" H 8150 5600 50  0001 C CNN
 	-1   0    0    -1  
 $EndComp
 $Comp
-L CP C14
-U 1 1 5AED1636
-P 7250 5550
-F 0 "C14" H 7275 5650 50  0000 L CNN
-F 1 "470uF" H 7275 5450 50  0000 L CNN
-F 2 "Capacitors_THT:CP_Radial_D8.0mm_P2.50mm" H 7288 5400 50  0001 C CNN
-F 3 "" H 7250 5550 50  0001 C CNN
-	1    7250 5550
-	-1   0    0    1   
-$EndComp
-$Comp
 L CP C13
 U 1 1 5AED1A3C
-P 6950 5550
-F 0 "C13" H 6975 5650 50  0000 L CNN
-F 1 "470uF" H 6975 5450 50  0000 L CNN
-F 2 "Capacitors_THT:CP_Radial_D8.0mm_P2.50mm" H 6988 5400 50  0001 C CNN
-F 3 "" H 6950 5550 50  0001 C CNN
-	1    6950 5550
-	-1   0    0    1   
-$EndComp
-$Comp
-L CP C12
-U 1 1 5AED1B1F
-P 7550 5550
-F 0 "C12" H 7575 5650 50  0000 L CNN
-F 1 "47uF" H 7575 5450 50  0000 L CNN
-F 2 "Capacitors_THT:CP_Radial_D5.0mm_P2.50mm" H 7588 5400 50  0001 C CNN
-F 3 "" H 7550 5550 50  0001 C CNN
-	1    7550 5550
+P 7800 5550
+F 0 "C13" H 7825 5650 50  0000 L CNN
+F 1 "470uF" H 7825 5450 50  0000 L CNN
+F 2 "Capacitors_THT:CP_Radial_D8.0mm_P2.50mm" H 7838 5400 50  0001 C CNN
+F 3 "" H 7800 5550 50  0001 C CNN
+	1    7800 5550
 	-1   0    0    1   
 $EndComp
 $Comp
@@ -1621,7 +1599,7 @@ Wire Wire Line
 	3550 2650 3000 2650
 Connection ~ 2600 7150
 Wire Wire Line
-	3850 7150 3850 6950
+	3850 6950 3850 7150
 Wire Wire Line
 	3850 7050 4400 7050
 Wire Wire Line
@@ -1766,24 +1744,20 @@ Wire Wire Line
 Wire Wire Line
 	10750 4800 10050 4800
 Wire Wire Line
-	6950 5700 8450 5700
+	7800 5700 8450 5700
 Connection ~ 8150 5700
-Connection ~ 7250 5700
-Connection ~ 6950 5700
+Connection ~ 7800 5700
 Wire Wire Line
 	6400 5400 8150 5400
-Connection ~ 6950 5400
+Connection ~ 7800 5400
 Wire Wire Line
 	8150 5400 8150 5500
-Connection ~ 7250 5400
 Wire Wire Line
 	8150 5500 8300 5500
 Wire Wire Line
 	8300 5500 8300 5600
 Wire Wire Line
 	8300 5600 8450 5600
-Connection ~ 7550 5700
-Connection ~ 7550 5400
 Connection ~ 3900 5400
 Connection ~ 3900 5100
 Wire Wire Line
@@ -1946,11 +1920,11 @@ Wire Wire Line
 Wire Wire Line
 	1000 1050 850  1050
 Wire Wire Line
-	6400 6450 10100 6450
+	10100 6450 6400 6450
 Wire Wire Line
 	10150 6400 8150 6400
 Wire Wire Line
-	8150 6400 8150 5700
+	8150 5700 8150 6400
 Connection ~ 8150 5850
 Wire Wire Line
 	10950 4100 10950 4350
