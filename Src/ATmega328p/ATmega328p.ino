@@ -30,7 +30,7 @@ means 68.55 ma for esp
 
 */
 #include <avr/wdt.h>
-//#include "git-version.h"
+#include "git-version.h"
 
 #ifndef GIT_VERSION
 #define GIT_VERSION 0.1
