@@ -223,7 +223,7 @@ void loop() {
       ATmegaSerialLength = rxByte;
 
       if (ATmegaSerialLength == 0) {
-        ATmegaSerialState = STATE_WAIT;
+        ATmegaSerialState = STATE_FINISHED;//STATE_WAIT;
       } else {
         ATmegaSerialState = STATE_RECIEVING;
       }
