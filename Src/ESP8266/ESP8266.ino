@@ -158,6 +158,7 @@ void setup()
   debugMode = digitalRead(DEBUG_PIN);
 
   Serial.println(".......");
+  Serial.print("Initilizing ESP8266...........");
   Serial.print("Finished: ");
   Serial.println(debugMode?"Debug Mode":"Slave Mode");
 
@@ -182,22 +183,22 @@ void setup()
     // We print this to make the serial sync before the commands are sent
     ATmegaSerial.println("......................");
 
-
-    Serial.print("Initilizing ESP8266...........");
-
     //WiFi.setAutoConnect(false);
-    connect_to_wifi();
+    //connect_to_wifi();
   	// WiFi.persistent(false);
 
-    pinMode(RESULT_PIN, OUTPUT);
-    pinMode(SUCCESS_PIN, OUTPUT);
-
-    digitalWrite(RESULT_PIN, LOW);
-    digitalWrite(SUCCESS_PIN, LOW);
     //setup_spi_slave();
     //
     // Wire.begin(0, 2); //SDA, SCL, D3, D4//Change to Wire.begin() for non ESP.
   }
+
+  pinMode(RESULT_PIN, OUTPUT);
+  pinMode(SUCCESS_PIN, OUTPUT);
+
+  digitalWrite(RESULT_PIN, LOW);
+  digitalWrite(SUCCESS_PIN, LOW);
+
+  Serial.println("Done init");
 }
 
 void loop() {
@@ -216,8 +217,8 @@ void loop() {
     if (ATmegaSerialState == STATE_WAIT) {
       ATmegaSerialState = STATE_CMD_RCVD;
       ATmegaSerialCommand = rxByte;
-      // Serial.print("Got CMD: ");
-      // Serial.println((int)ATmegaSerialCommand);
+      Serial.print("Got CMD: ");
+      Serial.println((int)ATmegaSerialCommand);
     } else if (ATmegaSerialState == STATE_CMD_RCVD) {
       ATmegaSerialLength = rxByte;
 
@@ -227,9 +228,11 @@ void loop() {
         ATmegaSerialState = STATE_RECIEVING;
       }
 
-      // Serial.print("Got LEN: ");
-      // Serial.println((int)ATmegaSerialLength);
+      Serial.print("Got LEN: ");
+      Serial.println((int)ATmegaSerialLength);
     } else if (ATmegaSerialState == STATE_RECIEVING) {
+      Serial.print((char)rxByte);
+
       ATmegaSerialBuffer[ATmegaSerialIndex++] = rxByte;
 
       if (ATmegaSerialIndex == ATmegaSerialLength) {
@@ -262,12 +265,16 @@ void loop() {
       }
 
       digitalWrite(RESULT_PIN, HIGH);
+    } else if (ATmegaSerialCommand == ESP_MSG_IDLE) {
+      Serial.println("Recieved Idle Command; Settings pins low.");
+      digitalWrite(RESULT_PIN, LOW);
+      digitalWrite(SUCCESS_PIN, LOW);
     } else if (ATmegaSerialCommand == ESP_MSG_SLEEP) {
       Serial.println("Recieved Sleep Command; Sleeping Now.");
       digitalWrite(RESULT_PIN, LOW);
       digitalWrite(SUCCESS_PIN, LOW);
       delay(50);
-      disconnect_from_wifi();
+      //disconnect_from_wifi();
       ESP.deepSleep(0);
     }
 
@@ -365,9 +372,9 @@ bool connect_to_wifi() {
   IPAddress wifi_subnet(SUBNET_MASK);
 
 
-  WiFi.hostname("weather_station");
+  //WiFi.hostname("weather_station");
   WiFi.config(wifi_ip, wifi_gateway, wifi_subnet);
-  //WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_STA);
 
   if (!WiFi.begin(WIFI_SSID, WIFI_PASS)) {
     return false;

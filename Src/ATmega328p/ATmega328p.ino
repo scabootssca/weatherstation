@@ -55,20 +55,20 @@ means 68.55 ma for esp
 
 // Sample and Reading defines
 #define SAMPLE_INTERVAL 2000
-#define READING_INTERVAL 300000 //SAMPLE_INTERVAL*5///300000 // 300000 = 5 minutes
+#define READING_INTERVAL 4000//300000 //SAMPLE_INTERVAL*5///300000 // 300000 = 5 minutes
 #define SAMPLES_PER_READING READING_INTERVAL/SAMPLE_INTERVAL
 #define BATTERY_SAMPLE_MODULO 25
 
 #define READINGS_BEFORE_SUBMIT 4 // 4 == every 20 mins
 #define MAX_FAILED_SUBMITS 3 // How many attempts to make with a request before waiting a few readings with a timeout
-#define SUBMIT_TIMEOUT_AFTER_FAIL 4 // How many readings to wait before before attempting to submit again after a fail
+//#define SUBMIT_TIMEOUT_AFTER_FAIL 4 // How many readings to wait before before attempting to submit again after a fail
 
 // ESP DEFINES
 // All in seconds
-#define ESP_RESET_READY_DELAY 2 // In seconds how long to wait after resetting the esp before trying to make it send a request
-#define ESP_RESET_TIMEOUT 30 // How long after resetting to wait for a response before trying again
-#define ESP_REQUEST_TIMEOUT 45 // In seconds after sending a request to call it failed
-#define ESP_REQUEST_DELAY 2 // This will also act as a request rate limiter
+#define ESP_RESET_READY_DELAY 5 // In seconds how long to wait after resetting the esp before it should respond
+#define ESP_RESET_TIMEOUT 30 // How long after resetting to wait for the esp to pull pins low before resetting it again
+#define ESP_REQUEST_TIMEOUT 60 // In seconds after sending a request to call it failed if no reply
+//#define ESP_REQUEST_DELAY 2 // This will also act as a request rate limiter
 
 // Max message size to store from serial connection with esp (BYTES)
 #define ESP_RECV_BUFFER_SIZE 16
@@ -76,7 +76,8 @@ means 68.55 ma for esp
 #define ESP_STATE_SLEEP 0
 #define ESP_STATE_IDLE 1
 #define ESP_STATE_AWAITING_RESULT 2
-#define ESP_STATE_RESETTING 3 // It can get stuck in here at line
+#define ESP_STATE_RESETTING 3
+#define ESP_STATE_AWAITING_DEBUG_RESULT 4
 
 // CALIBRATION DEFINES
 // Wind Vane Calibration
@@ -173,13 +174,18 @@ WeatherReadingAccumulator sampleAccumulator;
 uint16_t weatherReadingWriteIndex = 0;
 uint16_t weatherReadingReadIndex = 0;
 
+//////////////////////////
+// Esp interface vars   //
+//////////////////////////
 unsigned short espState = ESP_STATE_SLEEP;
 
 uint32_t espResetTime = 0;
 uint32_t espRequestTime = 0;
 
+// How many failures we've had this submission attempt
 unsigned int failedSubmits = 0;
-unsigned int submitTimeoutCountdown = 0;
+// How many readings left before submitting
+int submitCountdown = READINGS_BEFORE_SUBMIT;
 
 #define REQ_FAIL_NONE 0
 #define REQ_FAIL_ESP_REQUEST_TIMEOUT 1
@@ -187,7 +193,10 @@ unsigned int submitTimeoutCountdown = 0;
 #define REQ_FAIL_MAX_SUBMITS 3
 
 uint8_t requestFailReason = REQ_FAIL_NONE;
-int submitCountdown = 0;
+
+
+unsigned int submitTimeoutCountdown = 0;
+
 
 // Structures/Classes
 Adafruit_MCP23008 mcp; // IO Expander
@@ -196,78 +205,6 @@ Adafruit_BME280 bmeSensor; // Termometer, Hygrometer, Barometer
 BH1750 luxMeter; // Lux
 
 SoftwareSerial ESPSerial(ESP_RX_PIN, ESP_TX_PIN);
-
-void new_do_submit() {
-  // If it's waking up
-  if (espState == ESP_STATE_RESETTING) {
-    // And it's had enough time to wake and it's pulled the pins low
-    if (
-        get_unixtime()-espResetTime > ESP_RESET_READY_DELAY &&
-        mcp.digitalRead(MCP_ESP_RESET_PIN) == 0 &&
-        mcp.digitalRead(MCP_ESP_SUCCESS_PIN) == 0
-      ) {
-      espState = ESP_STATE_IDLE;
-    // If it's been above the time and the pins are high then it's probably frozen
-    } else if (get_unixtime()-espResetTime > ESP_RESET_TIMEOUT) {
-      esp_reset();
-    }
-  }
-
-  // If the esp is idling then start submitting a result or put it to sleep
-  if (espState == ESP_STATE_IDLE) {
-    // If there's readings to submit then do that
-    if (weatherReadingReadIndex != weatherReadingWriteIndex) {
-      submit_reading();
-    // Else just sleep then
-    } else {
-      esp_sleep();
-    }
-  }
-
-  // If we're waiting for a result
-  if (espState == ESP_STATE_AWAITING_RESULT) {
-    // If it timed out then
-
-    // If we have a result
-    if (mcp.digitalRead(MCP_ESP_RESULT_PIN)) {
-      // Success
-      if (mcp.digitalRead(MCP_ESP_SUCCESS_PIN)) {
-
-      // Failure
-      } else {
-
-      }
-    }
-  }
-}
-/*
-Ready To Store Reading ->
-  If reading is enough unsubmitted to submit then wake esp
-
-Esp is Awake ->
-  Submitting Reading?
-    Result?
-      Good result?
-        Goto next reading
-      Else can still try?
-        Try again
-      Else:
-        Esp Sleeping, try later
-    Timed out?
-      Reset esp
-    Else:
-      Keep waiting
-  Readings to submit?
-    -> Submit Reading
-  Else:
-   Esp Sleep
-
-Esp is Waking?
-  -> Esp is Awake
-
-
-*/
-
 
 char ESPRecvBuffer[ESP_RECV_BUFFER_SIZE];
 short ESPRecvIndex = 0;
@@ -599,12 +536,123 @@ void setup() {
   DEBUG_PRINTLN();
 }
 
+// This'll take care of the esp state machine
+void handle_esp() {
+  // If it's waking up
+  if (espState == ESP_STATE_RESETTING) {
+    // And it's had enough time to wake and it's pulled the pins low
+    if (
+        get_unixtime()-espResetTime > ESP_RESET_READY_DELAY &&
+        mcp.digitalRead(MCP_ESP_RESULT_PIN) == 0 &&
+        mcp.digitalRead(MCP_ESP_SUCCESS_PIN) == 0
+      ) {
+      Serial.println("Esp is now awake setting to ESP_STATE_IDLE");
+      espState = ESP_STATE_IDLE;
+    // If it's been above the time and the pins are high then it's probably frozen
+    } else if (get_unixtime()-espResetTime > ESP_RESET_TIMEOUT) {
+      // Have here maybe a max esp reset attempt counter?
+      Serial.println("Esp reset timeout");
+      esp_reset();
+    }
+  }
+
+  // If the esp is idling then start submitting a result or put it to sleep
+  if (espState == ESP_STATE_IDLE) {
+    // If there's readings to submit then do that
+    if (weatherReadingReadIndex != weatherReadingWriteIndex) {
+      submit_reading();
+    // Else just sleep then
+    } else {
+      Serial.println("Esp sleep after idle nothing to submit");
+      esp_sleep();
+    }
+  }
+
+  // For debug requests
+  if (espState == ESP_STATE_AWAITING_DEBUG_RESULT) {
+    if (mcp.digitalRead(MCP_ESP_RESULT_PIN) ||
+        get_unixtime()-espRequestTime > ESP_REQUEST_TIMEOUT) {
+      Serial.println("Esp sleep after debug");
+      esp_sleep();
+    }
+  }
+
+  // If we're waiting for a result
+  if (espState == ESP_STATE_AWAITING_RESULT) {
+    // If we have a result
+    if (mcp.digitalRead(MCP_ESP_RESULT_PIN)) {
+      // Success then make it as submitted and set esp to idle
+      if (mcp.digitalRead(MCP_ESP_SUCCESS_PIN)) {
+        failedSubmits = 0;
+        advance_read_pointer();
+
+        // Set the state to resetting and
+        // which will make the esp pull the pins low for a new reading
+        espState = ESP_STATE_IDLE;
+        send_esp_serial(ESP_MSG_IDLE, "");
+
+      // Failure result from esp
+      // Add one to the fail count
+      // and try again if we haven't more than MAX_FAILED_SUBMITS
+      } else {
+        failedSubmits++;
+
+        if (failedSubmits < MAX_FAILED_SUBMITS) {
+          submit_reading();
+        } else {
+          Serial.println("Esp sleep too many failures");
+          esp_sleep();
+        }
+      }
+
+    // If we haven't a result and it's over the time then sleep
+    } else if (get_unixtime()-espRequestTime > ESP_REQUEST_TIMEOUT) {
+      Serial.println("Esp request timeout");
+      esp_sleep();
+    }
+  }
+
+  // If it's asleep and time to submit
+  if (espState == ESP_STATE_SLEEP && submitCountdown <= 0) {
+    submitCountdown = READINGS_BEFORE_SUBMIT;
+    Serial.println("Esp reset time to submit");
+    esp_reset();
+  }
+}
+/*
+Ready To Store Reading ->
+  If reading is enough unsubmitted to submit then wake esp
+
+Esp is Awake ->
+  Submitting Reading?
+    Result?
+      Good result?
+        Goto next reading
+      Else can still try?
+        Try again
+      Else:
+        Esp Sleeping, try later
+    Timed out?
+      Reset esp
+    Else:
+      Keep waiting
+  Readings to submit?
+    -> Submit Reading
+  Else:
+   Esp Sleep
+
+Esp is Waking?
+  -> Esp is Awake
+
+
+*/
+
 void esp_send_debug_request(String message) {
   Serial.print(F("Debug Request: "));
   Serial.println(message);
 
   send_esp_serial(ESP_MSG_REQUEST, ("/debug.php?"+message).c_str());
-  espState = ESP_STATE_AWAITING_RESULT;
+  espState = ESP_STATE_AWAITING_DEBUG_RESULT;
   espRequestTime = get_unixtime();
 }
 
@@ -618,6 +666,7 @@ void esp_reset() {
   wdt_reset();
 
   DEBUG_PRINTLN(F("Resetting ESP"));
+
   espState = ESP_STATE_RESETTING;
   espResetTime = get_unixtime();
 
@@ -713,76 +762,78 @@ void loop() {
   delay(1);
   wdt_reset();
 
+  handle_esp();
+
   // Get from the esp
   //recv_esp_serial();
 
-  // If we're waiting for the esp to send the result of a http request
-  if (espState == ESP_STATE_AWAITING_RESULT) {
-    // If it replied and it's over the reset wait time
-    if (get_unixtime()-espRequestTime > ESP_REQUEST_DELAY && mcp.digitalRead(MCP_ESP_RESULT_PIN)) {
-      espState = ESP_STATE_IDLE;
-
-      bool success = mcp.digitalRead(MCP_ESP_SUCCESS_PIN);
-      DEBUG_PRINT(F("Esp sent result: "));
-      DEBUG_PRINTLN(success);
-
-      if (success) {
-        failedSubmits = 0;
-        requestFailReason = REQ_FAIL_NONE;
-        advance_read_pointer();
-      } else {
-        failedSubmits++;
-
-        DEBUG_PRINT(F("Failed, Retries Left: "));
-        DEBUG_PRINTLN(MAX_FAILED_SUBMITS-failedSubmits);
-
-        if (failedSubmits >= MAX_FAILED_SUBMITS) {
-          DEBUG_PRINTLN(F("Aborting (!)"));
-          requestFailReason = REQ_FAIL_MAX_SUBMITS;
-          submitTimeoutCountdown = SUBMIT_TIMEOUT_AFTER_FAIL;
-        }
-      }
-
-      // If we've submitted all the readings or had too many fails then put it back to sleep
-      if (submitTimeoutCountdown > 0 || (weatherReadingReadIndex == weatherReadingWriteIndex)) {
-        submitCountdown = READINGS_BEFORE_SUBMIT;
-        esp_sleep();
-      }
-
-    // If the esp timed out
-    } else if (get_unixtime()-espRequestTime > ESP_REQUEST_TIMEOUT) {
-      DEBUG_PRINTLN("Esp reply timeout.");
-      requestFailReason = REQ_FAIL_ESP_REQUEST_TIMEOUT;
-      // This'll start it again
-      esp_reset();
-    }
-  // If it was resetting
-  } else if (espState == ESP_STATE_RESETTING) {
-      // If it's now pulled the pins low signifying it's awake and it's been an appropriate amount of time
-      if (get_unixtime()-espResetTime > ESP_RESET_READY_DELAY &&
-          mcp.digitalRead(MCP_ESP_RESULT_PIN) == 0 &&
-          mcp.digitalRead(MCP_ESP_SUCCESS_PIN) == 0
-        ) {
-        // Idle now, on next loop we can send it a command
-        espState = ESP_STATE_IDLE;
-      // If it hasn't responded within the timeout it's probably frozen
-      } else if (get_unixtime()-espResetTime > ESP_RESET_TIMEOUT) {
-        DEBUG_PRINTLN("Esp reset timeout.");
-        // This'll start it again
-        requestFailReason = REQ_FAIL_ESP_RESET_TIMEOUT;
-        esp_reset();
-      }
-  // ESP_STATE_IDLE
-  } else if (espState == ESP_STATE_IDLE) {
-    // No timeout condition and if there are results waiting for submission
-    if (submitTimeoutCountdown <= 0 && weatherReadingReadIndex != weatherReadingWriteIndex) {
-      submit_reading();
-    // Means we're not submitting so put it back to sleep
-    } else {
-      submitCountdown = READINGS_BEFORE_SUBMIT;
-      esp_sleep();
-    }
-  }
+  // // If we're waiting for the esp to send the result of a http request
+  // if (espState == ESP_STATE_AWAITING_RESULT) {
+  //   // If it replied and it's over the reset wait time
+  //   if (get_unixtime()-espRequestTime > ESP_REQUEST_DELAY && mcp.digitalRead(MCP_ESP_RESULT_PIN)) {
+  //     espState = ESP_STATE_IDLE;
+  //
+  //     bool success = mcp.digitalRead(MCP_ESP_SUCCESS_PIN);
+  //     DEBUG_PRINT(F("Esp sent result: "));
+  //     DEBUG_PRINTLN(success);
+  //
+  //     if (success) {
+  //       failedSubmits = 0;
+  //       requestFailReason = REQ_FAIL_NONE;
+  //       advance_read_pointer();
+  //     } else {
+  //       failedSubmits++;
+  //
+  //       DEBUG_PRINT(F("Failed, Retries Left: "));
+  //       DEBUG_PRINTLN(MAX_FAILED_SUBMITS-failedSubmits);
+  //
+  //       if (failedSubmits >= MAX_FAILED_SUBMITS) {
+  //         DEBUG_PRINTLN(F("Aborting (!)"));
+  //         requestFailReason = REQ_FAIL_MAX_SUBMITS;
+  //         submitTimeoutCountdown = SUBMIT_TIMEOUT_AFTER_FAIL;
+  //       }
+  //     }
+  //
+  //     // If we've submitted all the readings or had too many fails then put it back to sleep
+  //     if (submitTimeoutCountdown > 0 || (weatherReadingReadIndex == weatherReadingWriteIndex)) {
+  //       submitCountdown = READINGS_BEFORE_SUBMIT;
+  //       esp_sleep();
+  //     }
+  //
+  //   // If the esp timed out
+  //   } else if (get_unixtime()-espRequestTime > ESP_REQUEST_TIMEOUT) {
+  //     DEBUG_PRINTLN("Esp reply timeout.");
+  //     requestFailReason = REQ_FAIL_ESP_REQUEST_TIMEOUT;
+  //     // This'll start it again
+  //     esp_reset();
+  //   }
+  // // If it was resetting
+  // } else if (espState == ESP_STATE_RESETTING) {
+  //     // If it's now pulled the pins low signifying it's awake and it's been an appropriate amount of time
+  //     if (get_unixtime()-espResetTime > ESP_RESET_READY_DELAY &&
+  //         mcp.digitalRead(MCP_ESP_RESULT_PIN) == 0 &&
+  //         mcp.digitalRead(MCP_ESP_SUCCESS_PIN) == 0
+  //       ) {
+  //       // Idle now, on next loop we can send it a command
+  //       espState = ESP_STATE_IDLE;
+  //     // If it hasn't responded within the timeout it's probably frozen
+  //     } else if (get_unixtime()-espResetTime > ESP_RESET_TIMEOUT) {
+  //       DEBUG_PRINTLN("Esp reset timeout.");
+  //       // This'll start it again
+  //       requestFailReason = REQ_FAIL_ESP_RESET_TIMEOUT;
+  //       esp_reset();
+  //     }
+  // // ESP_STATE_IDLE
+  // } else if (espState == ESP_STATE_IDLE) {
+  //   // No timeout condition and if there are results waiting for submission
+  //   if (submitTimeoutCountdown <= 0 && weatherReadingReadIndex != weatherReadingWriteIndex) {
+  //     submit_reading();
+  //   // Means we're not submitting so put it back to sleep
+  //   } else {
+  //     submitCountdown = READINGS_BEFORE_SUBMIT;
+  //     esp_sleep();
+  //   }
+  // }
 
   // Time to sample
   if (millis()-lastSampleMillis > SAMPLE_INTERVAL) {
@@ -819,30 +870,12 @@ void loop() {
 
     sram_write(weatherReadingWriteIndex, SRAM_ADDR_READINGS_WRITE_INDEX, SRAM_SIZE_READINGS_WRITE_INDEX);
 
-    if (submitTimeoutCountdown > 0) {
-      submitTimeoutCountdown--;
-
-      if (submitTimeoutCountdown == 0) {
-        failedSubmits = 0;
-      }
-    }
-
     if (submitCountdown > 0) {
-      submitCountdown -= 1;
+      submitCountdown--;
     }
 
-    // This could potentially submit an invalid bme reading if it wasn't detected
-    // for that reading and is now it'll submit invalid readings for the one that came before
-    // Maybe have a bitflag set for the data for errors that occured during that reading
-    // Try and detect the sensors for the next reading
-    if (!bmeConnected) {
-      init_bme();
-    }
-  }
-
-  // If we're ready to submit and the esp is sleeping then wake it
-  if (submitCountdown <= 0 && espState == ESP_STATE_SLEEP) {
-    esp_reset();
+    Serial.print("Till submit: ");
+    Serial.println(submitCountdown);
   }
 }
 
@@ -850,9 +883,9 @@ uint32_t get_unixtime() {
   return RTC.now().unixtime();
 }
 
-void advance_read_pointer() {
+bool advance_read_pointer() {
   if (weatherReadingReadIndex == weatherReadingWriteIndex) {
-    return;
+    return false;
   }
 
   weatherReadingReadIndex++;
@@ -863,6 +896,8 @@ void advance_read_pointer() {
 
   // Store it
   sram_write(weatherReadingReadIndex, SRAM_ADDR_READINGS_READ_INDEX, SRAM_SIZE_READINGS_READ_INDEX);
+
+  return true;
 }
 
 String generate_request_url(WeatherReading weatherReading) {
@@ -913,7 +948,7 @@ String generate_request_url(WeatherReading weatherReading) {
   outputUrl += "&attempt=";
   outputUrl += failedSubmits;
   outputUrl += "&fail=";
-  outputUrl = requestFailReason;
+  outputUrl += requestFailReason;
 
 	return outputUrl;
 }
@@ -931,7 +966,7 @@ void submit_reading() {
   for (int i=0; i<3; i++) {
     sram_read_reading(&currentReading, weatherReadingReadIndex);
 
-    printWeatherReading(currentReading);
+    //printWeatherReading(currentReading);
 
     // Maybe have this count and keep skip it if the read fails a few times?
     //possibly a crc or something?
@@ -948,7 +983,14 @@ void submit_reading() {
       // of the reading
 
       DEBUG_PRINTLN(F("Skipping"));
-      advance_read_pointer();
+
+      // If this returns false we've submitted everything
+      if (!advance_read_pointer()) {
+        esp_sleep();
+      }
+
+      // When we return here the esp will still be in ESP_STATE_IDLE
+      // And submit the next on the next loop
       return;
     }
 

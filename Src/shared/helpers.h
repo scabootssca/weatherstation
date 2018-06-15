@@ -16,6 +16,7 @@
 #define ESP_MSG_REQUEST_SUCCESS 3
 #define ESP_MSG_REQUEST_FAIL 4
 #define ESP_MSG_AWAKE 5
+#define ESP_MSG_IDLE 6
 
 #if DEBUG
 #define DEBUG_PRINT(...) Serial.print( __VA_ARGS__ )
