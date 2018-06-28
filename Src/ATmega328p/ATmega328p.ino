@@ -193,12 +193,9 @@ int submitCountdown = READINGS_BEFORE_SUBMIT;
 #define REQ_FAIL_ESP_REQUEST_TIMEOUT 1
 #define REQ_FAIL_ESP_RESET_TIMEOUT 2
 #define REQ_FAIL_MAX_SUBMITS 3
+#define REQ_FAIL_ESP_REQUEST_FAIL 4
 
 uint8_t requestFailReason = REQ_FAIL_NONE;
-
-
-unsigned int submitTimeoutCountdown = 0;
-
 
 // Structures/Classes
 Adafruit_MCP23008 mcp; // IO Expander
@@ -554,6 +551,7 @@ void handle_esp() {
     } else if (get_unixtime()-espResetTime > ESP_RESET_TIMEOUT) {
       // Have here maybe a max esp reset attempt counter?
       Serial.println("Esp reset timeout");
+      requestFailReason = REQ_FAIL_ESP_RESET_TIMEOUT;
       esp_reset();
     }
   }
@@ -592,6 +590,7 @@ void handle_esp() {
       if (mcp.digitalRead(MCP_ESP_SUCCESS_PIN)) {
         Serial.println(F("Success, adv and set to idle"));
         failedSubmits = 0;
+        requestFailReason = REQ_FAIL_NONE;
         advance_read_pointer();
 
         espState = ESP_STATE_IDLE;
@@ -606,14 +605,17 @@ void handle_esp() {
 
         if (failedSubmits > MAX_FAILED_SUBMITS) {
           Serial.println(F("Esp sleep too many failures"));
+          requestFailReason = REQ_FAIL_ESP_MAX_SUBMITS;
           esp_sleep();
         } else {
+          requestFailReason = REQ_FAIL_ESP_REQUEST_FAIL;
           espState = ESP_STATE_IDLE;
         }
       }
 
     // If we haven't a result and it's over the time then sleep
     } else if (get_unixtime()-espRequestTime > ESP_REQUEST_TIMEOUT) {
+      requestFailReason = REQ_FAIL_ESP_REQUEST_TIMEOUT;
       Serial.println("Esp request timeout");
       esp_sleep();
     }
@@ -626,33 +628,6 @@ void handle_esp() {
     esp_reset();
   }
 }
-/*
-Ready To Store Reading ->
-  If reading is enough unsubmitted to submit then wake esp
-
-Esp is Awake ->
-  Submitting Reading?
-    Result?
-      Good result?
-        Goto next reading
-      Else can still try?
-        Try again
-      Else:
-        Esp Sleeping, try later
-    Timed out?
-      Reset esp
-    Else:
-      Keep waiting
-  Readings to submit?
-    -> Submit Reading
-  Else:
-   Esp Sleep
-
-Esp is Waking?
-  -> Esp is Awake
-
-
-*/
 
 void esp_send_debug_request(String message) {
   Serial.print(F("Debug Request: "));
