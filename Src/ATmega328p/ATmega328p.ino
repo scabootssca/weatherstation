@@ -152,6 +152,7 @@ means 68.55 ma for esp
 #include "MCP_23A1024.h"
 #include "Adafruit_MCP23008.h"
 #include "BH1750.h"
+#include "automation_engine.h"
 
 // Globals
 uint32_t bootTime;
